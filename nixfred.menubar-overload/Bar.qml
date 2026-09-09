@@ -1874,21 +1874,25 @@ Item {
 
     readonly property bool built: visible && entries.length > 0
     property var widths: []
+    property var minWidths: []
     readonly property var measured: widths.slice(0, entries.length)
     readonly property real total: BarModel.cumulativeWidths(measured)[measured.length] || 0
+    // What the strip needs if every stretch widget shrinks to its minimum.
+    readonly property real minTotal: BarModel.cumulativeWidths(minWidths.slice(0, entries.length))[Math.min(minWidths.length, entries.length)] || 0
     // Whether the strip scrolls at all. A few pixels over the budget still
     // count as fitting (they eat into the gap), and the decision has
     // hysteresis so a strip whose widgets breathe around the threshold does
     // not flip between flat and ring.
     property bool overflowing: false
     function decideOverflow() {
-      // Fitting always wins; the band only delays turning the ring on, so a
-      // strip that momentarily overflowed while the bar was still measuring
-      // itself at startup settles back to flat.
-      if (overflowing) { if (total <= budget + 0.5) overflowing = false }
-      else if (total > budget + root.fitTolerance) overflowing = true
+      // Judged on minimum widths: a stretch widget that can shrink to make
+      // room is left to do so on a flat strip. Fitting always wins; the band
+      // only delays turning the ring on, so a strip that momentarily
+      // overflowed while the bar was still measuring itself settles flat.
+      if (overflowing) { if (minTotal <= budget + 0.5) overflowing = false }
+      else if (minTotal > budget + root.fitTolerance) overflowing = true
     }
-    onTotalChanged: decideOverflow()
+    onMinTotalChanged: decideOverflow()
     onBudgetChanged: decideOverflow()
     readonly property real viewport: overflowing ? Math.max(0, budget) : total
     readonly property real ring: total + (overflowing ? root.loopGap : 0)
@@ -1916,6 +1920,14 @@ Item {
       var next = widths.slice()
       next[index] = w
       widths = next
+    }
+
+    function setMinWidth(index, value) {
+      var w = Math.max(0, Number(value) || 0)
+      if (minWidths[index] === w) return
+      var next = minWidths.slice()
+      next[index] = w
+      minWidths = next
     }
 
     function offsetToReveal(index) {
@@ -2002,8 +2014,13 @@ Item {
         magnifyScale: strip.view.s[index] || 1
         tiltAngle: strip.view.a[index] || 0
 
-        onImplicitWidthChanged: strip.setWidth(index, implicitWidth)
-        Component.onCompleted: strip.setWidth(index, implicitWidth)
+        reportedWidth: implicitWidth
+        onReportedWidthChanged: strip.setWidth(index, reportedWidth)
+        onMinimumWidthChanged: strip.setMinWidth(index, minimumWidth)
+        Component.onCompleted: {
+          strip.setWidth(index, reportedWidth)
+          strip.setMinWidth(index, minimumWidth)
+        }
       }
     }
   }
@@ -2154,9 +2171,44 @@ Item {
     property bool shown: true
     property real magnifyScale: 1
     property real tiltAngle: 0
+    // The width the strip lays out with. It eases toward the real width, so
+    // a widget that changes size (Burn Bar, a now-playing title) flows the
+    // strip to its new shape instead of jumping every neighbour at once.
+    property real reportedWidth: 0
+    // The narrowest this widget can go. Stretch widgets publish a minimum
+    // (stretchMinWidth or configuredWidth, in style units); everything else
+    // is as wide as it is. The strip decides whether it must scroll from these,
+    // so a stretcher that can shrink to make room is allowed to.
+    readonly property real minimumWidth: {
+      var item = activeItem
+      if (!item || !item.visible) return 0
+      var stretches = item.stretch === true || typeof item.stretchedWidth === "number"
+      if (!stretches) return implicitWidth
+      var n = Number(item.stretchMinWidth)
+      if (!(isFinite(n) && n > 0)) n = Number(item.configuredWidth)
+      if (!(isFinite(n) && n > 0)) return implicitWidth
+      return Math.min(implicitWidth > 0 ? implicitWidth : Infinity, Style.spaceReal(n))
+    }
+    Behavior on reportedWidth {
+      enabled: slot.deck !== null && root.scrollAnimationMs > 0
+      NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+    }
     readonly property var ref: BarModel.entryRef(root.layoutEntries(region), regionIndex)
     readonly property string moduleName: root.entryId(entry)
-    readonly property var moduleSettings: root.entrySettings(entry)
+    // Widgets that stretch to fill their section's free room (Burn Bar,
+    // Beatdeck) measure that room from screen positions, which a scrolling
+    // ring keeps changing. On an overflowing strip they are told not to
+    // stretch and settle at their configured width; on a flat strip they fill
+    // the room exactly as they do on the stock bar.
+    readonly property bool stripScrolling: deck !== null && deck.overflowing
+    readonly property var moduleSettings: {
+      var settings = root.entrySettings(entry)
+      if (!stripScrolling) return settings
+      var copy = {}
+      for (var key in settings) copy[key] = settings[key]
+      copy.stretch = false
+      return copy
+    }
     readonly property string customType: root.customModuleType(entry)
     // Re-evaluate when the registry mutates (Component reference changes,
     // plugin enabled/disabled, etc.). Reading the `widgets` property creates

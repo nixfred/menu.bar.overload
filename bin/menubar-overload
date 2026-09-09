@@ -122,7 +122,7 @@ case $cmd in
     [[ -z $out || $out == ok ]] || die "$out"
     echo "$id $( [[ $flag == true ]] && echo pinned to the edge || echo back on the carousel )" ;;
   pinned)
-    omarchy-shell shell listShellConfig | jq -r '.bar.layout | to_entries[] | .key as $s | .value[] | select(.pinned == true) | "\($s): \(.id)"' ;;
+    omarchy-shell shell listShellConfig | jq -r '.bar.layout | to_entries[] | .key as $s | .value[] | (if type == "object" then . else {id: .} end) | select(.pinned == true) | "\($s): \(.id)"' ;;
   add) cmd_add "$@" ;;
   set) cmd_set "$@" ;;
   -h|--help|help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//' ;;

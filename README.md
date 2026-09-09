@@ -26,6 +26,10 @@ them in. The center section never scrolls.
   pin it (the zones light up while you drag; an empty corner shows a well to
   drop into), drag it back onto a strip to unpin it, or use
   `menubar-overload pin <id>` / `omarchy bar set <id> pinned true`.
+- Widgets that stretch to fill free room (Burn Bar, Beatdeck) keep doing so
+  on a flat strip. The strip only starts scrolling when even their minimum
+  widths do not fit, and while it scrolls they sit at their configured width
+  instead of chasing a moving edge. Width changes ease rather than jump.
 - Drag and drop reordering still works, and a panel summoned by hotkey
   (`omarchy-shell shell summon <id>`) scrolls its widget into view first.
 
