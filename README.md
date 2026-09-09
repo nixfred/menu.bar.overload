@@ -20,6 +20,10 @@ them in. The center section never scrolls.
   that way. Click a chevron to scroll a notch, right-click it to go home.
 - A scrolled strip drifts back home after 6 idle seconds. Click any widget on
   it and it stays where you left it until you scroll again.
+- Pinned widgets never join the carousel. Flag one with
+  `menubar-overload pin <id>` (or `omarchy bar set <id> pinned true`) and it
+  holds the bar's outer edge in layout order: the launcher and workspaces on
+  the far left, the bell, power and control center on the far right.
 - Drag and drop reordering still works, and a panel summoned by hotkey
   (`omarchy-shell shell summon <id>`) scrolls its widget into view first.
 
@@ -54,7 +58,9 @@ microphone). Everything else in this repo is the carousel.
 menubar-overload                          state of both strips
 menubar-overload scroll left|right [PX]   scroll PX pixels (negative = back)
 menubar-overload home [left|right]        scroll home
-menubar-overload pin left|right on|off    keep a strip where it is / let it drift
+menubar-overload hold left|right on|off   keep a strip where it is / let it drift
+menubar-overload pin <plugin> [on|off]    pin a widget to the outer edge, out of the carousel
+menubar-overload pinned                   list pinned widgets
 menubar-overload add <plugin> [left|right]
 menubar-overload set wheel on|off
 menubar-overload set invert-wheel on|off

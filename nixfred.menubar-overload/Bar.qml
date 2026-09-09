@@ -122,7 +122,8 @@ Item {
   // same run; each deck animates toward the shared target on its own.
   property var decks: []
   property var offsets: ({ left: 0, right: 0 })
-  property var pins: ({ left: false, right: false })
+  // A strip a click has held in place (it will not drift home).
+  property var holds: ({ left: false, right: false })
   property var lastScrollAt: ({ left: 0, right: 0 })
   readonly property var carouselConfig: Util.isPlainObject(barConfig) && Util.isPlainObject(barConfig.carousel) ? barConfig.carousel : ({})
   readonly property bool wheelScrolling: carouselConfig.wheel !== false
@@ -138,13 +139,38 @@ Item {
   readonly property real tilt: carouselConfig.tilt === undefined ? 16 : Math.max(0, Number(carouselConfig.tilt) || 0)
   readonly property bool edgeHints: carouselConfig.edgeHints !== false
   readonly property int carouselGap: Style.space(8)
+  readonly property int fitTolerance: Style.space(5)
   readonly property int loopGap: Style.space(14)
   readonly property int edgeHintWidth: Style.space(26)
   property var pendingSummon: null
 
   function isScrollingRegion(region) { return region === "left" || region === "right" }
   function offsetOf(region) { return Number(offsets[region]) || 0 }
-  function isPinned(region) { return pins[region] === true }
+  function isHeld(region) { return holds[region] === true }
+
+  // Entries flagged `"pinned": true` sit fixed at the bar's outer edge and
+  // never join the carousel: the launcher and workspaces on the left, the
+  // bell and power on the right. `omarchy bar set <id> pinned true` flags one.
+  function isPinnedEntry(entry) {
+    var settings = entrySettings(entry)
+    return settings.pinned === true || settings.pinned === "true"
+  }
+
+  // Indices (into the region list) of the pinned and the scrolling entries.
+  function splitIndices(entries, pinned) {
+    var out = []
+    var list = Array.isArray(entries) ? entries : []
+    for (var i = 0; i < list.length; i++) {
+      if (isPinnedEntry(list[i]) === pinned) out.push(i)
+    }
+    return out
+  }
+
+  function pickEntries(entries, indices) {
+    var out = []
+    for (var i = 0; i < indices.length; i++) out.push(entries[indices[i]])
+    return out
+  }
 
   function registerDeck(deck) {
     if (!deck || decks.indexOf(deck) !== -1) return
@@ -171,8 +197,8 @@ Item {
     var stamp = Util.cloneJson(lastScrollAt)
     stamp[region] = Date.now()
     lastScrollAt = stamp
-    // Scrolling again releases a click's pin; the strip drifts home once idle.
-    if (byUser) setPinned(region, false)
+    // Scrolling again releases a click's hold; the strip drifts home once idle.
+    if (byUser) setHeld(region, false)
     if (Math.abs(next - offsetOf(region)) < 0.01) return false
     var copy = Util.cloneJson(offsets)
     copy[region] = next
@@ -195,16 +221,16 @@ Item {
     return setOffset(region, BarModel.nearestHome(offsetOf(region), deck.homeOffset, deck.ring), byUser === true)
   }
 
-  function setPinned(region, value) {
-    if (!isScrollingRegion(region) || isPinned(region) === (value === true)) return
-    var copy = Util.cloneJson(pins)
+  function setHeld(region, value) {
+    if (!isScrollingRegion(region) || isHeld(region) === (value === true)) return
+    var copy = Util.cloneJson(holds)
     copy[region] = value === true
-    pins = copy
+    holds = copy
   }
 
   // A click on a scrolled strip keeps it where you left it.
-  function pinFromClick(region) {
-    if (isScrollingRegion(region) && !isHome(region)) setPinned(region, true)
+  function holdFromClick(region) {
+    if (isScrollingRegion(region) && !isHome(region)) setHeld(region, true)
   }
 
   // Wheel down or swipe right moves the widgets right to left, wheel up or
@@ -245,8 +271,9 @@ Item {
         overflowing: deck ? deck.overflowing : false,
         offset: Math.round(offsetOf(region)),
         home: isHome(region),
-        pinned: isPinned(region),
+        held: isHeld(region),
         hidden: deck ? deck.hiddenCount : 0,
+        pinned: deck ? deck.pinnedIds : [],
         viewport: deck ? Math.round(deck.viewport) : 0,
         total: deck ? Math.round(deck.total) : 0
       }
@@ -275,7 +302,7 @@ Item {
       var regions = ["left", "right"]
       for (var i = 0; i < regions.length; i++) {
         var region = regions[i]
-        if (root.isHome(region) || root.isPinned(region)) continue
+        if (root.isHome(region) || root.isHeld(region)) continue
         if (now - Number(root.lastScrollAt[region] || 0) >= root.returnAfter * 1000) root.scrollHome(region, false)
       }
     }
@@ -305,9 +332,9 @@ Item {
       else root.scrollHome(region, true)
       return "ok"
     }
-    function pin(region: string, value: string): string {
-      root.setPinned(region, value === "true" || value === "on" || value === "1")
-      return root.isPinned(region) ? "pinned" : "unpinned"
+    function hold(region: string, value: string): string {
+      root.setHeld(region, value === "true" || value === "on" || value === "1")
+      return root.isHeld(region) ? "held" : "released"
     }
     function status(): string { return JSON.stringify(root.carouselStatus()) }
   }
@@ -1283,20 +1310,42 @@ Item {
 
         // Each side strip gets the room between the bar edge and the center
         // content, minus a gap.
-        LeftModules {
-          id: leftDeck
+        // Pinned widgets hold the corners; the strips take what is left
+        // between them and the center.
+        ModuleList {
+          id: leftPinned
+          readonly property var pinnedIndices: root.splitIndices(root.layoutEntries("left"), true)
+          entries: root.pickEntries(root.layoutEntries("left"), pinnedIndices)
+          indices: pinnedIndices
+          region: "left"
           anchors.left: parent.left
           anchors.leftMargin: Style.space(8)
           anchors.verticalCenter: parent.verticalCenter
-          budget: Math.max(0, centerModules.contentLeft - Style.space(8) - root.carouselGap)
+        }
+
+        LeftModules {
+          id: leftDeck
+          anchors.left: leftPinned.right
+          anchors.verticalCenter: parent.verticalCenter
+          budget: Math.max(0, centerModules.contentLeft - leftPinned.x - leftPinned.width - root.carouselGap)
+        }
+
+        ModuleList {
+          id: rightPinned
+          readonly property var pinnedIndices: root.splitIndices(root.layoutEntries("right"), true)
+          entries: root.pickEntries(root.layoutEntries("right"), pinnedIndices)
+          indices: pinnedIndices
+          region: "right"
+          anchors.right: parent.right
+          anchors.rightMargin: Style.space(8)
+          anchors.verticalCenter: parent.verticalCenter
         }
 
         RightModules {
           id: rightDeck
-          anchors.right: parent.right
-          anchors.rightMargin: Style.space(8)
+          anchors.right: rightPinned.left
           anchors.verticalCenter: parent.verticalCenter
-          budget: Math.max(0, parent.width - Style.space(8) - centerModules.contentRight - root.carouselGap)
+          budget: Math.max(0, rightPinned.x - centerModules.contentRight - root.carouselGap)
         }
 
         // "There is more this way" at both ends of a scrolling strip: the
@@ -1684,13 +1733,17 @@ Item {
   }
 
   component LeftModules: ScrollDeck {
-    entries: root.layoutEntries("left")
+    readonly property var stripIndices: root.splitIndices(root.layoutEntries("left"), false)
+    entries: root.pickEntries(root.layoutEntries("left"), stripIndices)
+    indices: stripIndices
     region: "left"
     fromEnd: false
   }
 
   component RightModules: ScrollDeck {
-    entries: root.layoutEntries("right")
+    readonly property var stripIndices: root.splitIndices(root.layoutEntries("right"), false)
+    entries: root.pickEntries(root.layoutEntries("right"), stripIndices)
+    indices: stripIndices
     region: "right"
     fromEnd: true
   }
@@ -1702,8 +1755,11 @@ Item {
     property var entries: []
     property string region: ""
     // Index of entries[0] inside the whole region list; the anchored center
-    // section hands each side of the anchor a slice.
+    // section hands each side of the anchor a slice. When the entries are not
+    // contiguous (a pinned run), `indices` gives each one's region index.
     property int offset: 0
+    property var indices: []
+    function regionIndexOf(index) { return indices.length > 0 ? indices[index] : offset + index }
     // A hidden list must not build its modules. The center section declares
     // both an anchored and an unanchored arrangement and shows whichever
     // fits, so building both would mount every center module twice — two
@@ -1728,7 +1784,7 @@ Item {
           required property var modelData
           entry: modelData
           region: moduleListRoot.region
-          regionIndex: moduleListRoot.offset + index
+          regionIndex: moduleListRoot.regionIndexOf(index)
         }
       }
     }
@@ -1743,16 +1799,35 @@ Item {
 
     property var entries: []
     property string region: ""
+    // Region index of each entry (the pinned ones are not on the strip).
+    property var indices: []
     // Right-side decks are home showing their tail, so the corner widgets
     // keep their corner and scrolling reveals the ones nearer the center.
     property bool fromEnd: false
     property real budget: 0
+    readonly property var pinnedIds: {
+      var all = root.layoutEntries(region)
+      var out = []
+      for (var i = 0; i < all.length; i++) if (root.isPinnedEntry(all[i])) out.push(root.entryId(all[i]))
+      return out
+    }
 
     readonly property bool built: visible && entries.length > 0
     property var widths: []
     readonly property var measured: widths.slice(0, entries.length)
     readonly property real total: BarModel.cumulativeWidths(measured)[measured.length] || 0
-    readonly property bool overflowing: total > budget + 0.5
+    // Whether the strip scrolls at all. A few pixels over the budget still
+    // count as fitting (they eat into the gap), and the decision has
+    // hysteresis so a strip whose widgets breathe around the threshold does
+    // not flip between flat and ring.
+    property bool overflowing: false
+    function decideOverflow() {
+      var slack = root.fitTolerance
+      if (overflowing) { if (total <= budget - slack) overflowing = false }
+      else if (total > budget + slack) overflowing = true
+    }
+    onTotalChanged: decideOverflow()
+    onBudgetChanged: decideOverflow()
     readonly property real viewport: overflowing ? Math.max(0, budget) : total
     readonly property real ring: total + (overflowing ? root.loopGap : 0)
     readonly property real homeOffset: BarModel.homeOffset(total, viewport, fromEnd)
@@ -1769,7 +1844,7 @@ Item {
       hovering ? focalX : null, root.magnify * magnifyLevel, root.magnifyRadius, root.tilt)
     readonly property int hiddenCount: {
       var count = 0
-      for (var i = 0; i < view.on.length; i++) if (measured[i] > 0 && !view.on[i]) count++
+      for (var i = 0; i < view.shown.length; i++) if (measured[i] > 0 && !view.shown[i]) count++
       return count
     }
 
@@ -1790,10 +1865,15 @@ Item {
     // there seconds later.
     property real lastHome: homeOffset
     onHomeOffsetChanged: {
-      if (overflowing && Math.abs(offset - BarModel.nearestHome(offset, lastHome, ring)) < 0.5)
-        root.setOffset(region, BarModel.nearestHome(offset, homeOffset, ring), false)
+      // Judge by the shared target, not the eased offset: widths arrive one
+      // by one at startup and home moves faster than the easing settles.
+      var target = root.offsetOf(region)
+      if (overflowing && Math.abs(target - BarModel.nearestHome(target, lastHome, ring)) < 0.5)
+        root.setOffset(region, BarModel.nearestHome(target, homeOffset, ring), false)
       lastHome = homeOffset
     }
+    // The moment a strip starts scrolling it should be home, not at offset 0.
+    onOverflowingChanged: if (overflowing && root.isHome(region) === false && Math.abs(root.offsetOf(region)) < 0.5) root.setOffset(region, homeOffset, false)
 
     // A change by a whole number of rings draws identically, so take it
     // without easing: that is how the bar folds an offset back onto [0, ring).
@@ -1851,7 +1931,7 @@ Item {
 
         entry: modelData
         region: strip.region
-        regionIndex: index
+        regionIndex: strip.indices.length > 0 ? strip.indices[index] : index
         deck: strip
         deckIndex: index
         shown: strip.view.shown[index] === true
@@ -2117,7 +2197,7 @@ Item {
         pressedX = mouse.x
         pressedY = mouse.y
         root.clearBarDrag()
-        root.pinFromClick(slot.region)
+        root.holdFromClick(slot.region)
       }
 
       onPositionChanged: function(mouse) {
