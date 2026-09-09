@@ -54,6 +54,13 @@ git clone https://github.com/nixfred/menu.bar.overload ~/Projects/menu.bar.overl
 back to the previous bar: `omarchy bar use pi.bar` (or `omarchy bar reset`
 for the stock one).
 
+There is no daemon to run: the bar lives inside `omarchy-shell`, which
+Hyprland starts at login, and the shell loads whichever bar `shell.json`
+names. `install.sh --boot` adds a login-time safety net anyway, a oneshot
+systemd user unit (`menubar-overload.service`) that re-links the plugin and
+re-selects it if either was lost, so the carousel is there after every
+reboot.
+
 The bar is a clone of Omarchy's `omarchy.bar` engine as it stands in
 `~/.config/omarchy/plugins/pi.bar` (the "Locked Bar": fixed to the top edge,
 no transparency toggle, no drag-to-move gestures, no wheel-to-volume on the
