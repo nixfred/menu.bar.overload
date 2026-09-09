@@ -1822,9 +1822,11 @@ Item {
     // not flip between flat and ring.
     property bool overflowing: false
     function decideOverflow() {
-      var slack = root.fitTolerance
-      if (overflowing) { if (total <= budget - slack) overflowing = false }
-      else if (total > budget + slack) overflowing = true
+      // Fitting always wins; the band only delays turning the ring on, so a
+      // strip that momentarily overflowed while the bar was still measuring
+      // itself at startup settles back to flat.
+      if (overflowing) { if (total <= budget + 0.5) overflowing = false }
+      else if (total > budget + root.fitTolerance) overflowing = true
     }
     onTotalChanged: decideOverflow()
     onBudgetChanged: decideOverflow()
