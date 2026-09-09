@@ -930,7 +930,29 @@ Item {
       candidates.push({ slot: well, x: wellPoint.x, y: wellPoint.y, width: well.width, height: well.height })
     }
 
-    return BarModel.nearestDropTarget(candidates, scenePoint, root.vertical)
+    // Drops are zone-aware: a pointer left of the center content lands in the
+    // left section, right of it in the right section, between in the center.
+    // Otherwise a widget let go in the gap beside the center would join the
+    // center list because that edge happened to be nearer, and a stretch
+    // widget dropped there squashes to nothing.
+    var centerLeft = Infinity
+    var centerRight = -Infinity
+    for (var c = 0; c < candidates.length; c++) {
+      var cand = candidates[c]
+      if (cand.slot.region !== "center") continue
+      centerLeft = Math.min(centerLeft, cand.x)
+      centerRight = Math.max(centerRight, cand.x + cand.width)
+    }
+    var axis = root.vertical ? scenePoint.y : scenePoint.x
+    var zone = "center"
+    if (centerLeft !== Infinity) {
+      if (axis < centerLeft) zone = "left"
+      else if (axis > centerRight) zone = "right"
+    }
+    var zoned = candidates.filter(function(cand) { return cand.slot.region === zone })
+    if (zoned.length === 0) zoned = candidates
+
+    return BarModel.nearestDropTarget(zoned, scenePoint, root.vertical)
   }
 
   // Persist a drop. Entries are addressed as {id, occurrence} references
