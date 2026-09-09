@@ -118,13 +118,16 @@ case $cmd in
   pin)
     id=${1:-}; value=${2:-outer}
     [[ -n $id ]] || die "usage: menubar-overload pin <plugin-id> [outer|inner|off]"
-    case $value in outer|on|true|1) flag=true; where="pinned to the corner" ;; inner) flag='"inner"'; where="pinned beside the center" ;; off|false|0) flag=false; where="back on the carousel" ;; *) die "expected outer, inner or off" ;; esac
-    # The bar's own inline-settings path: live, no file juggling.
-    out=$(omarchy-shell shell setBarWidget "$id" pinned "$flag" '{}')
+    case $value in outer|on|true|1) zone='"outer"'; where="pinned to the corner" ;; inner) zone='"inner"'; where="pinned beside the center" ;; off|false|0) zone='""'; where="back on the carousel" ;; *) die "expected outer, inner or off" ;; esac
+    # The bar's own inline-settings path: live, no file juggling. The key is
+    # `zone`; `pinned` belongs to the tray widget's icon list.
+    out=$(omarchy-shell shell setBarWidget "$id" zone "$zone" '{}')
     [[ -z $out || $out == ok ]] || die "$out"
     echo "$id $where" ;;
   pinned)
-    omarchy-shell shell listShellConfig | jq -r '.bar.layout | to_entries[] | .key as $s | .value[] | (if type == "object" then . else {id: .} end) | select(.pinned == true or .pinned == "outer" or .pinned == "inner") | "\($s) \(if .pinned == "inner" then "inner" else "corner" end): \(.id)"' ;;
+    omarchy-shell shell listShellConfig | jq -r '.bar.layout | to_entries[] | .key as $s | .value[] | (if type == "object" then . else {id: .} end)
+      | (.zone // (if .pinned == true or .pinned == "outer" then "outer" elif .pinned == "inner" then "inner" else "" end)) as $z
+      | select($z == "outer" or $z == "inner") | "\($s) \(if $z == "inner" then "inner" else "corner" end): \(.id)"' ;;
   add) cmd_add "$@" ;;
   set) cmd_set "$@" ;;
   -h|--help|help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//' ;;

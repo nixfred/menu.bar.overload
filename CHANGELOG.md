@@ -21,3 +21,11 @@ First packaged release.
 - Hotkey-summoned panels scroll their widget into view first.
 - `menubar-overload` CLI, `install.sh --use` / `--boot`, node tests for the
   layout model.
+- Pre-release bug check by Codex (docs/reviews/codex-0.9.md), all findings
+  fixed: zones are stored under `zone`, not `pinned` (the tray's icon list
+  lives there); zone changes apply live; settings deltas keep the slot's
+  entry honest; wheel and home use the deck on the pointer's monitor; the
+  ring is long enough that recycling happens off screen; explicit
+  `stretch: false` counts as fixed width; visibility follows the magnified
+  bounds; a hidden panel cancels its pending summon; the installer fails
+  loudly and initialises a missing config; the boot unit quotes its path.

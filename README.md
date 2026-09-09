@@ -28,7 +28,7 @@ them in. The center section never scrolls.
   zones light up while you drag; an empty zone shows a well to drop into),
   drag it back onto the strip to unpin it, or use
   `menubar-overload pin <id> outer|inner|off` /
-  `omarchy bar set <id> pinned true|inner`.
+  `omarchy bar set <id> zone outer|inner`.
 - Widgets that stretch to fill free room (Burn Bar, Beatdeck) keep doing so
   on a flat strip. The strip only starts scrolling when even their minimum
   widths do not fit, and while it scrolls they sit at their configured width

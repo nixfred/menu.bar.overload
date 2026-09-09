@@ -33,22 +33,36 @@ shell_up() { omarchy-shell shell ping >/dev/null 2>&1; }
 
 select_bar() {
   local current
-  current=$(jq -r '.bar.id // ""' "$config" 2>/dev/null || echo "")
+  if [[ ! -s $config ]]; then
+    # No user config yet: start from Omarchy's defaults so the shell has a
+    # complete file to read.
+    local defaults="${OMARCHY_PATH:-/usr/share/omarchy}/config/omarchy/shell.json"
+    [[ -s $defaults ]] || { echo "no shell.json and no defaults at $defaults" >&2; exit 1; }
+    mkdir -p "$(dirname "$config")"
+    cp "$defaults" "$config"
+  fi
+  current=$(jq -r '.bar.id // ""' "$config" 2>/dev/null) || { echo "$config is not valid JSON; not touching it" >&2; exit 1; }
   [[ $current == "$id" ]] && { say "$id is already the active bar"; return 0; }
   if shell_up && command -v omarchy-shell-config-edit >/dev/null 2>&1; then
     # A host with the compare-and-set config store rejects direct file
     # writes, so switch the bar through its snapshot/apply path.
     local base edited; base=$(mktemp); edited=$(mktemp)
-    omarchy-shell-config-edit snapshot "$base" >/dev/null
-    jq --arg id "$id" '.bar.id = $id' "$base" >"$edited"
-    omarchy-shell-config-edit apply --allow-layout-change "$base" "$edited" >/dev/null
+    if ! omarchy-shell-config-edit snapshot "$base" >/dev/null \
+       || ! jq --arg id "$id" '.bar.id = $id' "$base" >"$edited" \
+       || ! omarchy-shell-config-edit apply --allow-layout-change "$base" "$edited" >/dev/null; then
+      rm -f "$base" "$edited"
+      echo "could not switch the bar through omarchy shell config-edit" >&2; exit 1
+    fi
     rm -f "$base" "$edited"
   elif shell_up; then
-    omarchy bar use "$id" >/dev/null
+    omarchy bar use "$id" >/dev/null || { echo "omarchy bar use failed" >&2; exit 1; }
   else
     # No shell running (login-time): edit the file it will read on start.
     local tmp; tmp=$(mktemp)
-    jq --arg id "$id" '.bar.id = $id' "$config" >"$tmp" && mv "$tmp" "$config"
+    if ! jq --arg id "$id" '.bar.id = $id' "$config" >"$tmp"; then
+      rm -f "$tmp"; echo "could not edit $config" >&2; exit 1
+    fi
+    mv "$tmp" "$config"
   fi
   say "$id is now the active bar"
 }
@@ -76,7 +90,7 @@ After=graphical-session.target
 
 [Service]
 Type=oneshot
-ExecStart=$here/install.sh --ensure
+ExecStart="${here//%/%%}/install.sh" --ensure
 
 [Install]
 WantedBy=graphical-session.target

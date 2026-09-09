@@ -149,12 +149,13 @@ Item {
   function offsetOf(region) { return Number(offsets[region]) || 0 }
   function isHeld(region) { return holds[region] === true }
 
-  // Each side has three zones. Entries flagged `"pinned": true` sit fixed at
+  // Each side has three zones. Entries with `"zone": "outer"` sit fixed at
   // the bar's corner (the launcher and workspaces, the bell and power);
-  // entries flagged `"pinned": "inner"` sit fixed beside the center content
+  // entries with `"zone": "inner"` sit fixed beside the center content
   // (Burn Bar and Beatdeck, left of the indicators and clock); everything
-  // else rides the carousel strip between them. `omarchy bar set <id>
-  // pinned true|inner` flags one, and so does dropping it into a zone.
+  // else rides the carousel strip between them. `omarchy bar set <id> zone
+  // outer|inner` flags one, and so does dropping it into a zone. (`pinned`
+  // is not used: the tray keeps its pinned icon ids under that key.)
   function pinKind(entry) { return BarModel.pinKind(entry) }
   function isPinnedEntry(entry) { return pinKind(entry) !== "" }
 
@@ -197,11 +198,17 @@ Item {
     pinWells = pinWells.filter(function(item) { return item !== well })
   }
 
-  function deckFor(region) {
+  // The deck for a region, preferring the copy on `window` (each monitor has
+  // its own bar) and falling back to the first built one for IPC callers.
+  function deckFor(region, window) {
+    var fallback = null
     for (var i = 0; i < decks.length; i++) {
-      if (decks[i] && decks[i].region === region && decks[i].built) return decks[i]
+      var deck = decks[i]
+      if (!deck || deck.region !== region || !deck.built) continue
+      if (window && sameWindow(targetWindow(deck), window)) return deck
+      if (!fallback) fallback = deck
     }
-    return null
+    return fallback
   }
 
   function setOffset(region, value, byUser) {
@@ -250,9 +257,9 @@ Item {
   // Wheel down or swipe right moves the widgets right to left, wheel up or
   // swipe left moves them back. Touchpads report pixel deltas and scroll by
   // exactly that; a mouse wheel notch scrolls `scrollStep` pixels.
-  function scrollWheel(region, wheel) {
+  function scrollWheel(region, wheel, sourceDeck) {
     if (!wheelScrolling || !isScrollingRegion(region)) return false
-    var deck = deckFor(region)
+    var deck = sourceDeck || deckFor(region)
     if (!deck || !deck.overflowing) return false
     var pixels = 0
     if (wheel.pixelDelta && (wheel.pixelDelta.x !== 0 || wheel.pixelDelta.y !== 0)) {
@@ -623,8 +630,17 @@ Item {
     var next = normalizeLayout(config.layout)
     var delta = BarModel.inlineSettingsDelta(layoutConfig, next)
     if (delta) {
-      applySettingsDelta(delta)
-      return
+      // A change of zone moves a widget between lists, which only a rebuild
+      // can do; everything else is patched in place.
+      var zoneChanged = false
+      for (var d = 0; d < delta.length; d++) {
+        var current = layoutConfig[delta[d].region][delta[d].index]
+        if (BarModel.pinKind(current) !== BarModel.pinKind(delta[d].entry)) zoneChanged = true
+      }
+      if (!zoneChanged) {
+        applySettingsDelta(delta)
+        return
+      }
     }
     layoutConfig = next
     barConfigSerial++
@@ -634,12 +650,12 @@ Item {
     for (var i = 0; i < delta.length; i++) {
       var change = delta[i]
       layoutConfig[change.region][change.index] = change.entry
-      var settings = entrySettings(change.entry)
       for (var s = 0; s < moduleSlots.length; s++) {
         var slot = moduleSlots[s]
         if (!slot || slot.region !== change.region || slot.moduleName !== entryId(change.entry)) continue
-        var item = slot.activeItem
-        if (item && "settings" in item) item.settings = settings
+        // Hand the slot the new entry; moduleSettings re-derives from it
+        // (with the strip's stretch override) and injects into the widget.
+        slot.entry = change.entry
       }
     }
   }
@@ -792,6 +808,10 @@ Item {
   function hideBarWidget(pluginId) {
     var item = findPanelWidget(pluginId)
     if (!item || typeof item.close !== "function") return false
+    if (pendingSummon === item) {
+      pendingSummon = null
+      summonTimer.stop()
+    }
     item.close()
     return true
   }
@@ -1865,7 +1885,7 @@ Item {
       var region = ""
       if (wheel.x < gestureArea.contentLeft) region = "left"
       else if (wheel.x > gestureArea.contentRight) region = "right"
-      wheel.accepted = region !== "" && root.scrollWheel(region, wheel)
+      wheel.accepted = region !== "" && root.scrollWheel(region, wheel, root.deckFor(region, root.targetWindow(gestureArea)))
     }
   }
 
@@ -1994,7 +2014,7 @@ Item {
     onMinTotalChanged: decideOverflow()
     onDecisionBudgetChanged: decideOverflow()
     readonly property real viewport: overflowing ? Math.max(0, budget) : total
-    readonly property real ring: total + (overflowing ? root.loopGap : 0)
+    readonly property real ring: overflowing ? BarModel.ringLength(total, viewport, root.loopGap, measured) : total
     readonly property real homeOffset: BarModel.homeOffset(total, viewport, fromEnd)
     // The shared target from the bar; `offset` follows it with easing.
     readonly property real targetOffset: overflowing ? root.offsetOf(region) : 0
@@ -2252,7 +2272,7 @@ Item {
       }
 
       onWheel: function(wheel) {
-        if (hint.deck) root.scrollWheel(hint.deck.region, wheel)
+        if (hint.deck) root.scrollWheel(hint.deck.region, wheel, hint.deck)
       }
     }
   }
@@ -2283,15 +2303,21 @@ Item {
     readonly property real minimumWidth: {
       var item = activeItem
       if (!item || !item.visible) return 0
-      var stretches = item.stretch === true || typeof item.stretchedWidth === "number"
+      // Judge by the saved setting, not the live one: the strip itself turns
+      // stretch off while scrolling, and that must not hide the widget's
+      // ability to shrink once the strip is flat again.
+      var saved = root.entrySettings(entry)
+      var stretches = saved.stretch !== false && (item.stretch === true || typeof item.stretchedWidth === "number")
       if (!stretches) return implicitWidth
       var n = Number(item.stretchMinWidth)
       if (!(isFinite(n) && n > 0)) n = Number(item.configuredWidth)
       if (!(isFinite(n) && n > 0)) return implicitWidth
       return Math.min(implicitWidth > 0 ? implicitWidth : Infinity, Style.spaceReal(n))
     }
+    // Growth is reserved at once so a growing widget never paints over its
+    // neighbour; only shrinking eases, which closes the gap smoothly.
     Behavior on reportedWidth {
-      enabled: slot.deck !== null && root.scrollAnimationMs > 0
+      enabled: slot.deck !== null && root.scrollAnimationMs > 0 && slot.implicitWidth < slot.reportedWidth
       NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
     }
     readonly property var ref: BarModel.entryRef(root.layoutEntries(region), regionIndex)
@@ -2368,6 +2394,7 @@ Item {
     Component.onCompleted: root.registerModuleSlot(slot)
     Component.onDestruction: {
       if (root.barDragSource === slot) root.clearBarDrag()
+      if (root.pendingSummon && root.pendingSummon === slot.activeItem) root.pendingSummon = null
       root.unregisterModuleSlot(slot)
     }
 
@@ -2553,7 +2580,7 @@ Item {
           wheel.accepted = false
           return
         }
-        wheel.accepted = root.scrollWheel(strip.region, wheel)
+        wheel.accepted = root.scrollWheel(strip.region, wheel, strip)
       }
     }
 

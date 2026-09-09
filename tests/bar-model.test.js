@@ -137,24 +137,52 @@ test("moveEntryByRef handles duplicates and missing regions", () => {
   assert.deepEqual(ids(l.right), ["c"])
 })
 
-test("pinKind reads outer, inner and none", () => {
+test("pinKind reads zone, tolerates legacy pinned, ignores tray arrays", () => {
+  assert.equal(M.pinKind(e("a", { zone: "outer" })), "outer")
+  assert.equal(M.pinKind(e("a", { zone: "inner" })), "inner")
+  assert.equal(M.pinKind(e("a", { zone: "" })), "")
   assert.equal(M.pinKind(e("a", { pinned: true })), "outer")
-  assert.equal(M.pinKind(e("a", { pinned: "outer" })), "outer")
   assert.equal(M.pinKind(e("a", { pinned: "inner" })), "inner")
+  assert.equal(M.pinKind(e("pi.tray", { pinned: ["steam"], hidden: [] })), "")
+  assert.equal(M.pinKind(e("a", { zone: "inner", pinned: ["x"] })), "inner")
   assert.equal(M.pinKind(e("a")), "")
   assert.equal(M.pinKind("a"), "")
 })
 
-test("setEntryPinned sets zones, clears and promotes string entries", () => {
-  const l = { left: ["a", e("b"), e("c", { pinned: true }), e("d", { pinned: "inner" })] }
+test("ringLength keeps recycling off screen", () => {
+  assert.equal(M.ringLength(300, 280, 14, [100, 100, 100]), 394)   // viewport + widest + gap
+  assert.equal(M.ringLength(1000, 280, 14, [100, 100]), 1014)      // total + gap
+  const w = [100, 100, 100]
+  const ring = M.ringLength(300, 280, 14, w)
+  const before = M.ringView(w, 280, ring, 100, true, null, 0, 0, 0)
+  const after = M.ringView(w, 280, ring, 101, true, null, 0, 0, 0)
+  // item 0 leaves at the left and is not drawn inside the viewport on the right
+  assert.ok(before.x[0] <= -100 + 1e-9 || !before.on[0])
+  assert.ok(!after.on[0] || after.x[0] < 0)
+})
+
+test("setEntryPinned writes zone, migrates legacy pinned, keeps tray arrays", () => {
+  const l = { left: ["a", e("b"), e("c", { pinned: true }), e("d", { zone: "inner" }), e("pi.tray", { pinned: ["steam"], hidden: ["x"] })] }
   assert.equal(M.setEntryPinned(l, "left", 0, "outer"), true)
-  assert.deepEqual(l.left[0], { id: "a", pinned: true })
+  assert.deepEqual(l.left[0], { id: "a", zone: "outer" })
   assert.equal(M.setEntryPinned(l, "left", 1, ""), false)          // already on the carousel
   assert.equal(M.setEntryPinned(l, "left", 1, "inner"), true)
-  assert.deepEqual(l.left[1], { id: "b", pinned: "inner" })
-  assert.equal(M.setEntryPinned(l, "left", 2, ""), true)
+  assert.deepEqual(l.left[1], { id: "b", zone: "inner" })
+  assert.equal(M.setEntryPinned(l, "left", 2, ""), true)           // legacy flag removed
   assert.deepEqual(l.left[2], { id: "c" })
   assert.equal(M.setEntryPinned(l, "left", 3, "inner"), false)     // unchanged
+  assert.equal(M.setEntryPinned(l, "left", 4, "outer"), true)      // tray keeps its icon list
+  assert.deepEqual(l.left[4], { id: "pi.tray", pinned: ["steam"], hidden: ["x"], zone: "outer" })
+  assert.equal(M.setEntryPinned(l, "left", 4, ""), true)
+  assert.deepEqual(l.left[4], { id: "pi.tray", pinned: ["steam"], hidden: ["x"] })
   assert.equal(M.setEntryPinned(l, "left", 7, true), false)
   assert.equal(M.setEntryPinned(l, "nope", 0, true), false)
+})
+
+test("visibility flags follow the repacked, scaled bounds", () => {
+  const w = Array(20).fill(10)
+  const v = M.ringView(w, 200, 214, 0, true, 100, 0.8, 60, 0)
+  // the first slot is pushed left by the spread and must not claim to be fully shown
+  const left = v.x[0] + 5 - 5 * v.s[0]
+  assert.equal(v.shown[0], left >= -0.5)
 })

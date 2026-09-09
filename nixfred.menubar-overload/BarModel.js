@@ -261,6 +261,19 @@ function nearestHome(offset, home, ring) {
   return home + k * r
 }
 
+// The ring circumference. At least the seam gap past the total, and never
+// so short that a widget wraps from one edge to the other while both
+// positions are inside the viewport: recycling must happen off screen.
+function ringLength(total, viewport, loopGap, widths) {
+  var list = Array.isArray(widths) ? widths : []
+  var widest = 0
+  for (var i = 0; i < list.length; i++) if (Number(list[i]) > widest) widest = Number(list[i])
+  var t = Number(total) || 0
+  var port = Number(viewport) || 0
+  var gap = Number(loopGap) || 0
+  return Math.max(t + gap, port + widest + gap)
+}
+
 // Everything the strip needs to draw one frame.
 //   widths      measured slot widths, in entry order
 //   viewport    visible width of the strip
@@ -338,6 +351,15 @@ function ringView(widths, viewport, ring, offset, overflowing, focal, magnify, r
     var jl = visible[l], jr = visible[l + 1]
     prev = prev - (list[jr] * view.s[jr] + list[jl] * view.s[jl]) / 2
     view.x[jl] = prev - list[jl] / 2
+  }
+  // Repacking can push a widget past an edge; judge visibility on the
+  // final, scaled bounds so panel routing and drops see what is drawn.
+  for (var q = 0; q < visible.length; q++) {
+    var iq = visible[q]
+    var half = list[iq] * view.s[iq] / 2
+    var cq = view.x[iq] + list[iq] / 2
+    view.on[iq] = cq + half > 0.5 && cq - half < port - 0.5
+    view.shown[iq] = cq - half >= -0.5 && cq + half <= port + 0.5
   }
   return view
 }
@@ -438,19 +460,27 @@ function moveEntryByRef(layout, fromRegion, fromRef, toRegion, toRef) {
   return { index: toIndex, moved: true }
 }
 
-// Which pinned zone an entry belongs to: "outer" (the bar's corner; stored as
-// pinned: true for compatibility), "inner" (beside the center content), or ""
-// for a widget on the carousel.
+// Which zone an entry belongs to: "outer" (the bar's corner), "inner"
+// (beside the center content), or "" for a widget on the carousel. The
+// zone lives under its own key, `zone`, because `pinned` already means
+// something to the tray widget (its list of pinned icon ids). Early 0.9
+// builds wrote `pinned: true|"inner"`; those are still read, but only when
+// the value is a boolean or string, never an array.
 function pinKind(entry) {
   var settings = entrySettings(entry)
-  var value = settings.pinned
-  if (value === true || value === "true" || value === "outer") return "outer"
-  if (value === "inner") return "inner"
+  var zone = settings.zone
+  if (zone === "outer" || zone === "corner") return "outer"
+  if (zone === "inner") return "inner"
+  if (zone !== undefined && zone !== null) return ""
+  var legacy = settings.pinned
+  if (legacy === true || legacy === "true" || legacy === "outer") return "outer"
+  if (legacy === "inner") return "inner"
   return ""
 }
 
-// Set one raw layout entry's pinned zone. Returns true when it changed.
-// String entries are promoted to objects first.
+// Set one raw layout entry's zone. Returns true when it changed. String
+// entries are promoted to objects first. A legacy boolean/string `pinned`
+// is removed; an array under `pinned` (the tray's icons) is left alone.
 function setEntryPinned(layout, region, index, kind) {
   if (!isPlainObject(layout) || !Array.isArray(layout[region])) return false
   var entries = layout[region]
@@ -460,9 +490,9 @@ function setEntryPinned(layout, region, index, kind) {
   if (!isPlainObject(entry)) return false
   var want = kind === true ? "outer" : String(kind || "")
   var was = pinKind(entry)
-  if (want === "outer") entry.pinned = true
-  else if (want === "inner") entry.pinned = "inner"
-  else delete entry.pinned
+  if (typeof entry.pinned === "boolean" || typeof entry.pinned === "string") delete entry.pinned
+  if (want === "outer" || want === "inner") entry.zone = want
+  else delete entry.zone
   entries[index] = entry
   return was !== want
 }
@@ -491,6 +521,7 @@ if (typeof module !== "undefined") {
     wrapOffset: wrapOffset,
     homeOffset: homeOffset,
     nearestHome: nearestHome,
+    ringLength: ringLength,
     ringView: ringView,
     offsetToReveal: offsetToReveal,
     entryOccurrence: entryOccurrence,
