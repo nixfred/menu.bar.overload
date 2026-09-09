@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "nixfred.menubar-overload",
+  "name": "MenuBar Overload",
+  "version": "1.0.0",
+  "author": "Fred Nix",
+  "license": "MIT",
+  "description": "The Omarchy bar with a carousel on each side. Add as many plugins as you like; roll through the ones that do not fit with the mouse wheel or a trackpad swipe, and each one pops out as it arrives.",
+  "kinds": [
+    "bar"
+  ],
+  "entryPoints": {
+    "bar": "Bar.qml"
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.bar"
+  }
+}

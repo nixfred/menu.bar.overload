@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# menubar-overload — drive the MenuBar Overload carousel (nixfred.menubar-overload).
+#
+#   menubar-overload                          state of both strips
+#   menubar-overload scroll left|right [PX]   scroll PX pixels (negative = back; default one notch)
+#   menubar-overload home [left|right]        scroll home (both by default)
+#   menubar-overload pin left|right on|off    keep a strip where it is / let it drift home
+#   menubar-overload add <plugin-id> [left|right]
+#                                             enable a plugin onto a strip; it joins the hidden
+#                                             part and scrolls into view
+#   menubar-overload set wheel on|off         mouse wheel / trackpad scrolls (default on)
+#   menubar-overload set invert-wheel on|off
+#   menubar-overload set step <px>            pixels per wheel notch (default 64)
+#   menubar-overload set animation <ms>       easing per scroll (default 240, 0 = instant)
+#   menubar-overload set return <seconds>     drift home after N idle seconds unless pinned
+#                                             (default 6, 0 = never)
+#   menubar-overload set magnify <factor>     dock magnification, 0.35 = 35% bigger (0 = off)
+#   menubar-overload set radius <px>          reach of the magnification (default 84)
+#   menubar-overload set tilt <degrees>       3D tilt at the edge of the reach (default 16)
+#   menubar-overload set edge-hints on|off    the fading edges and chevrons (default on)
+#
+# Scrolling goes through the bar's own IPC. Settings are written to the
+# `bar.carousel` block of shell.json through `omarchy shell config-edit` where
+# that exists, and through the stock `omarchy-shell-config` writer otherwise.
+set -euo pipefail
+
+die() { echo "menubar-overload: $*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null 2>&1 || die "missing dependency: $1"; }
+need jq
+need omarchy-shell
+
+ipc() { omarchy-shell menubar-overload "$@"; }
+side_ok() { [[ $1 == left || $1 == right ]]; }
+
+write_config() {
+  local program=$1; shift
+  if command -v omarchy-shell-config-edit >/dev/null 2>&1; then
+    local base edited; base=$(mktemp); edited=$(mktemp)
+    omarchy-shell-config-edit snapshot "$base" >/dev/null
+    jq -S -e "$@" "$program" "$base" >"$edited" || die "could not build the edited configuration"
+    omarchy-shell-config-edit apply "$base" "$edited"
+    rm -f "$base" "$edited"
+  else
+    # shellcheck disable=SC1090
+    source "$(command -v omarchy-shell-config)"
+    commit "$NORMALIZE | $program" "$@"
+  fi
+}
+
+cmd_status() {
+  local json; json=$(ipc status)
+  jq -r '
+    def side($n): .[$n] | "\($n): " + (if .overflowing then "\(.hidden) hidden, " + (if .home then "home" else "scrolled \(.offset)px" end) + (if .pinned then " (pinned)" else "" end) else "everything fits, dormant" end) + "  [\(.total)px in \(.viewport)px]";
+    side("left"), side("right"),
+    "wheel \(if .wheel then "on" else "off" end)\(if .invertWheel then " (inverted)" else "" end) · step \(.step)px · animation \(.animation)ms · return \(if .returnAfter > 0 then "\(.returnAfter)s" else "never" end) · magnify \(.magnify) over \(.radius)px, tilt \(.tilt)° · edge hints \(if .edgeHints then "on" else "off" end)"
+  ' <<<"$json"
+}
+
+cmd_set() {
+  local key=${1:-} value=${2:-}
+  onoff() { case $1 in on|true|1|yes) echo true ;; off|false|0|no) echo false ;; *) die "expected on or off" ;; esac; }
+  num() { [[ $1 =~ ^[0-9]+([.][0-9]+)?$ ]] || die "$2 takes a number"; echo "$1"; }
+  case $key in
+    wheel)        write_config '.bar.carousel.wheel = $v' --argjson v "$(onoff "$value")" ;;
+    invert-wheel) write_config '.bar.carousel.invertWheel = $v' --argjson v "$(onoff "$value")" ;;
+    edge-hints)   write_config '.bar.carousel.edgeHints = $v' --argjson v "$(onoff "$value")" ;;
+    step)         write_config '.bar.carousel.step = $v' --argjson v "$(num "$value" step)" ;;
+    animation)    write_config '.bar.carousel.animation = $v' --argjson v "$(num "$value" animation)" ;;
+    return)       write_config '.bar.carousel.returnAfter = $v' --argjson v "$(num "$value" return)" ;;
+    magnify)      write_config '.bar.carousel.magnify = $v' --argjson v "$(num "$value" magnify)" ;;
+    radius)       write_config '.bar.carousel.radius = $v' --argjson v "$(num "$value" radius)" ;;
+    tilt)         write_config '.bar.carousel.tilt = $v' --argjson v "$(num "$value" tilt)" ;;
+    *) die "usage: menubar-overload set wheel|invert-wheel|edge-hints on|off | step|animation|return|magnify|radius|tilt <n>" ;;
+  esac
+  sleep 0.3
+  cmd_status
+}
+
+cmd_add() {
+  local id=${1:-} side=${2:-right}
+  [[ -n $id ]] || die "usage: menubar-overload add <plugin-id> [left|right]"
+  side_ok "$side" || die "side must be left or right"
+  # The left strip is home at its start and the right strip at its end, so
+  # the hidden part is the end of the left list and the start of the right
+  # list. The shell's default placement for the right section is right after
+  # the tray, which is that hidden inner edge; for the left it is after the
+  # workspaces, which is not, so pin new left widgets to the end.
+  if [[ $side == left ]]; then
+    local n; n=$(omarchy-shell shell listShellConfig | jq '.bar.layout.left | length')
+    omarchy plugin enable "$id" --section left --index "$n"
+  else
+    omarchy plugin enable "$id" --section right
+  fi
+}
+
+cmd=${1:-status}; shift || true
+case $cmd in
+  status) cmd_status ;;
+  scroll)
+    side=${1:-}; px=${2:-}
+    side_ok "$side" || die "usage: menubar-overload scroll left|right [PX]"
+    [[ -z $px ]] && px=$(ipc status | jq '.step')
+    [[ $px =~ ^-?[0-9]+$ ]] || die "PX must be a whole number"
+    echo "scrolled $side to $(ipc scroll "$side" "$px")px" ;;
+  home)
+    side=${1:-all}
+    [[ $side == all ]] || side_ok "$side" || die "usage: menubar-overload home [left|right]"
+    ipc home "$side" >/dev/null; echo "home" ;;
+  pin)
+    side=${1:-}; value=${2:-on}
+    side_ok "$side" || die "usage: menubar-overload pin left|right on|off"
+    ipc pin "$side" "$value"; echo ;;
+  add) cmd_add "$@" ;;
+  set) cmd_set "$@" ;;
+  -h|--help|help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) die "unknown command: $cmd (try: menubar-overload help)" ;;
+esac
