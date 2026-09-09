@@ -5,9 +5,11 @@
 #   menubar-overload scroll left|right [PX]   scroll PX pixels (negative = back; default one notch)
 #   menubar-overload home [left|right]        scroll home (both by default)
 #   menubar-overload hold left|right on|off   keep a strip where it is / let it drift home
-#   menubar-overload pin <plugin-id> [on|off] pin a widget to the bar's outer edge, out of
-#                                             the carousel (the bell, power, the launcher)
-#   menubar-overload pinned                   list pinned widgets
+#   menubar-overload pin <plugin-id> [outer|inner|off]
+#                                             pin a widget out of the carousel: outer = the
+#                                             bar's corner (bell, power, launcher), inner =
+#                                             beside the center (Burn Bar, Beatdeck)
+#   menubar-overload pinned                   list pinned widgets by zone
 #   menubar-overload add <plugin-id> [left|right]
 #                                             enable a plugin onto a strip; it joins the hidden
 #                                             part and scrolls into view
@@ -53,7 +55,7 @@ write_config() {
 cmd_status() {
   local json; json=$(ipc status)
   jq -r '
-    def side($n): .[$n] | "\($n): " + (if .overflowing then "\(.hidden) hidden, " + (if .home then "home" else "scrolled \(.offset)px" end) + (if .held then " (held)" else "" end) else "everything fits, dormant" end) + "  [\(.total)px in \(.viewport)px]" + (if (.pinned|length) > 0 then "  pinned: \(.pinned|join(", "))" else "" end);
+    def side($n): .[$n] | "\($n): " + (if .overflowing then "\(.hidden) hidden, " + (if .home then "home" else "scrolled \(.offset)px" end) + (if .held then " (held)" else "" end) else "everything fits, dormant" end) + "  [\(.total)px in \(.viewport)px]" + (if (.pinned.outer|length) > 0 then "  corner: \(.pinned.outer|join(", "))" else "" end) + (if (.pinned.inner|length) > 0 then "  inner: \(.pinned.inner|join(", "))" else "" end);
     side("left"), side("right"),
     "wheel \(if .wheel then "on" else "off" end)\(if .invertWheel then " (inverted)" else "" end) · step \(.step)px · animation \(.animation)ms · return \(if .returnAfter > 0 then "\(.returnAfter)s" else "never" end) · magnify \(.magnify) over \(.radius)px, tilt \(.tilt)° · edge hints \(if .edgeHints then "on" else "off" end)"
   ' <<<"$json"
@@ -114,15 +116,15 @@ case $cmd in
     side_ok "$side" || die "usage: menubar-overload hold left|right on|off"
     ipc hold "$side" "$value"; echo ;;
   pin)
-    id=${1:-}; value=${2:-on}
-    [[ -n $id ]] || die "usage: menubar-overload pin <plugin-id> [on|off]"
-    case $value in on|true|1) flag=true ;; off|false|0) flag=false ;; *) die "expected on or off" ;; esac
+    id=${1:-}; value=${2:-outer}
+    [[ -n $id ]] || die "usage: menubar-overload pin <plugin-id> [outer|inner|off]"
+    case $value in outer|on|true|1) flag=true; where="pinned to the corner" ;; inner) flag='"inner"'; where="pinned beside the center" ;; off|false|0) flag=false; where="back on the carousel" ;; *) die "expected outer, inner or off" ;; esac
     # The bar's own inline-settings path: live, no file juggling.
     out=$(omarchy-shell shell setBarWidget "$id" pinned "$flag" '{}')
     [[ -z $out || $out == ok ]] || die "$out"
-    echo "$id $( [[ $flag == true ]] && echo pinned to the edge || echo back on the carousel )" ;;
+    echo "$id $where" ;;
   pinned)
-    omarchy-shell shell listShellConfig | jq -r '.bar.layout | to_entries[] | .key as $s | .value[] | (if type == "object" then . else {id: .} end) | select(.pinned == true) | "\($s): \(.id)"' ;;
+    omarchy-shell shell listShellConfig | jq -r '.bar.layout | to_entries[] | .key as $s | .value[] | (if type == "object" then . else {id: .} end) | select(.pinned == true or .pinned == "outer" or .pinned == "inner") | "\($s) \(if .pinned == "inner" then "inner" else "corner" end): \(.id)"' ;;
   add) cmd_add "$@" ;;
   set) cmd_set "$@" ;;
   -h|--help|help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//' ;;

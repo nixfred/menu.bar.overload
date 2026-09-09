@@ -438,21 +438,33 @@ function moveEntryByRef(layout, fromRegion, fromRef, toRegion, toRef) {
   return { index: toIndex, moved: true }
 }
 
-// Set or clear the pinned flag on one raw layout entry. Returns true when the
-// entry changed. String entries are promoted to objects first.
-function setEntryPinned(layout, region, index, pinned) {
+// Which pinned zone an entry belongs to: "outer" (the bar's corner; stored as
+// pinned: true for compatibility), "inner" (beside the center content), or ""
+// for a widget on the carousel.
+function pinKind(entry) {
+  var settings = entrySettings(entry)
+  var value = settings.pinned
+  if (value === true || value === "true" || value === "outer") return "outer"
+  if (value === "inner") return "inner"
+  return ""
+}
+
+// Set one raw layout entry's pinned zone. Returns true when it changed.
+// String entries are promoted to objects first.
+function setEntryPinned(layout, region, index, kind) {
   if (!isPlainObject(layout) || !Array.isArray(layout[region])) return false
   var entries = layout[region]
   if (index < 0 || index >= entries.length) return false
   var entry = entries[index]
   if (typeof entry === "string") entry = { id: entry }
   if (!isPlainObject(entry)) return false
-  var was = entry.pinned === true
-  if (was === (pinned === true) && entries[index] === entry) return false
-  if (pinned) entry.pinned = true
+  var want = kind === true ? "outer" : String(kind || "")
+  var was = pinKind(entry)
+  if (want === "outer") entry.pinned = true
+  else if (want === "inner") entry.pinned = "inner"
   else delete entry.pinned
   entries[index] = entry
-  return was !== (pinned === true)
+  return was !== want
 }
 
 if (typeof module !== "undefined") {
@@ -485,6 +497,7 @@ if (typeof module !== "undefined") {
     entryRef: entryRef,
     indexOfRef: indexOfRef,
     moveEntryByRef: moveEntryByRef,
+    pinKind: pinKind,
     setEntryPinned: setEntryPinned
   }
 }

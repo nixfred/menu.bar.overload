@@ -20,12 +20,15 @@ them in. The center section never scrolls.
   that way. Click a chevron to scroll a notch, right-click it to go home.
 - A scrolled strip drifts back home after 6 idle seconds. Click any widget on
   it and it stays where you left it until you scroll again.
-- Pinned widgets never join the carousel. They hold the bar's outer edges in
-  layout order: the launcher and workspaces on the far left, the bell, power
-  and control center on the far right. Drag a widget into a corner zone to
-  pin it (the zones light up while you drag; an empty corner shows a well to
-  drop into), drag it back onto a strip to unpin it, or use
-  `menubar-overload pin <id>` / `omarchy bar set <id> pinned true`.
+- Pinned widgets never join the carousel. Each side has two pinned zones:
+  the corner (the launcher and workspaces on the far left, the bell, power
+  and control center on the far right) and the inner edge beside the center
+  (Burn Bar and Beatdeck, left of the system indicators and the clock). The
+  strip scrolls between them. Drag a widget into a zone to pin it there (the
+  zones light up while you drag; an empty zone shows a well to drop into),
+  drag it back onto the strip to unpin it, or use
+  `menubar-overload pin <id> outer|inner|off` /
+  `omarchy bar set <id> pinned true|inner`.
 - Widgets that stretch to fill free room (Burn Bar, Beatdeck) keep doing so
   on a flat strip. The strip only starts scrolling when even their minimum
   widths do not fit, and while it scrolls they sit at their configured width
@@ -65,8 +68,9 @@ menubar-overload                          state of both strips
 menubar-overload scroll left|right [PX]   scroll PX pixels (negative = back)
 menubar-overload home [left|right]        scroll home
 menubar-overload hold left|right on|off   keep a strip where it is / let it drift
-menubar-overload pin <plugin> [on|off]    pin a widget to the outer edge, out of the carousel
-menubar-overload pinned                   list pinned widgets
+menubar-overload pin <plugin> [outer|inner|off]
+                                          pin a widget to a corner or beside the center
+menubar-overload pinned                   list pinned widgets by zone
 menubar-overload add <plugin> [left|right]
 menubar-overload set wheel on|off
 menubar-overload set invert-wheel on|off

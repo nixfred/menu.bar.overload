@@ -149,20 +149,22 @@ Item {
   function offsetOf(region) { return Number(offsets[region]) || 0 }
   function isHeld(region) { return holds[region] === true }
 
-  // Entries flagged `"pinned": true` sit fixed at the bar's outer edge and
-  // never join the carousel: the launcher and workspaces on the left, the
-  // bell and power on the right. `omarchy bar set <id> pinned true` flags one.
-  function isPinnedEntry(entry) {
-    var settings = entrySettings(entry)
-    return settings.pinned === true || settings.pinned === "true"
-  }
+  // Each side has three zones. Entries flagged `"pinned": true` sit fixed at
+  // the bar's corner (the launcher and workspaces, the bell and power);
+  // entries flagged `"pinned": "inner"` sit fixed beside the center content
+  // (Burn Bar and Beatdeck, left of the indicators and clock); everything
+  // else rides the carousel strip between them. `omarchy bar set <id>
+  // pinned true|inner` flags one, and so does dropping it into a zone.
+  function pinKind(entry) { return BarModel.pinKind(entry) }
+  function isPinnedEntry(entry) { return pinKind(entry) !== "" }
 
-  // Indices (into the region list) of the pinned and the scrolling entries.
-  function splitIndices(entries, pinned) {
+  // Indices (into the region list) of the entries in one zone: "outer",
+  // "inner" or "" for the strip.
+  function splitIndices(entries, kind) {
     var out = []
     var list = Array.isArray(entries) ? entries : []
     for (var i = 0; i < list.length; i++) {
-      if (isPinnedEntry(list[i]) === pinned) out.push(i)
+      if (pinKind(list[i]) === kind) out.push(i)
     }
     return out
   }
@@ -285,7 +287,7 @@ Item {
         home: isHome(region),
         held: isHeld(region),
         hidden: deck ? deck.hiddenCount : 0,
-        pinned: deck ? deck.pinnedIds : [],
+        pinned: deck ? deck.pinnedIds : { outer: [], inner: [] },
         viewport: deck ? Math.round(deck.viewport) : 0,
         total: deck ? Math.round(deck.total) : 0
       }
@@ -969,15 +971,17 @@ Item {
     var toRegion = target.region
     var entries = layoutEntries(toRegion)
     var toRef = null
-    var pin = false
+    var pin = ""
     if (target.isPinWell === true) {
-      // Left zone: in front of everything; right zone: after everything.
-      toRef = toRegion === "left" && entries.length > 0 ? BarModel.entryRef(entries, 0) : null
-      pin = true
+      // A corner well on the left, or an inner well on the right, is the
+      // head of its list; the other two are the tail.
+      var atHead = (toRegion === "left") === (target.kind === "outer")
+      toRef = atHead && entries.length > 0 ? BarModel.entryRef(entries, 0) : null
+      pin = target.kind
     } else {
       var index = afterTarget ? target.regionIndex + 1 : target.regionIndex
       toRef = index < entries.length ? BarModel.entryRef(entries, index) : null
-      pin = root.isPinnedEntry(target.entry)
+      pin = root.pinKind(target.entry)
     }
 
     var changed = false
@@ -1370,35 +1374,24 @@ Item {
 
         // Each side strip gets the room between the bar edge and the center
         // content, minus a gap.
-        // Pinned widgets hold the corners; the strips take what is left
-        // between them and the center. While a drag is live the corners show
-        // as drop zones: drop there to pin, drop on a strip to unpin.
+        // Three zones a side: pinned widgets hold the corner, the strip takes
+        // the middle, inner-pinned widgets sit beside the center. While a drag
+        // is live the zones show as drop targets: an empty zone shows a well.
         PinWell {
           id: leftWell
           region: "left"
+          kind: "outer"
           list: leftPinned
           anchors.left: parent.left
           anchors.leftMargin: Style.space(8)
           anchors.verticalCenter: parent.verticalCenter
         }
 
-        PinWell {
-          id: rightWell
-          region: "right"
-          list: rightPinned
-          anchors.right: parent.right
-          anchors.rightMargin: Style.space(8)
-          anchors.verticalCenter: parent.verticalCenter
-        }
-
-        PinZoneGlow { zone: leftPinned }
-        PinZoneGlow { zone: rightPinned }
-
         ModuleList {
           id: leftPinned
-          readonly property var pinnedIndices: root.splitIndices(root.layoutEntries("left"), true)
-          entries: root.pickEntries(root.layoutEntries("left"), pinnedIndices)
-          indices: pinnedIndices
+          readonly property var zoneIndices: root.splitIndices(root.layoutEntries("left"), "outer")
+          entries: root.pickEntries(root.layoutEntries("left"), zoneIndices)
+          indices: zoneIndices
           region: "left"
           anchors.left: parent.left
           anchors.leftMargin: Style.space(8)
@@ -1409,14 +1402,50 @@ Item {
           id: leftDeck
           anchors.left: leftPinned.entries.length > 0 ? leftPinned.right : leftWell.right
           anchors.verticalCenter: parent.verticalCenter
-          budget: Math.max(0, centerModules.contentLeft - x - root.carouselGap)
+          // Actual room, with the inner widgets at whatever width they have.
+          budget: Math.max(0, centerModules.contentLeft - x - leftInner.width - leftInnerWell.width - root.carouselGap)
+          // Room if the inner stretch widgets shrink to their minimum; this
+          // decides whether the strip must scroll, so they get to shrink first.
+          minBudget: Math.max(0, centerModules.contentLeft - x - leftInner.minTotal - root.carouselGap)
+        }
+
+        ModuleList {
+          id: leftInner
+          readonly property var zoneIndices: root.splitIndices(root.layoutEntries("left"), "inner")
+          entries: root.pickEntries(root.layoutEntries("left"), zoneIndices)
+          indices: zoneIndices
+          region: "left"
+          // Stretchers beside a scrolling strip would chase its edge; hold
+          // them at their configured width until the strip is flat again.
+          blockStretch: leftDeck.overflowing
+          anchors.left: leftDeck.right
+          anchors.verticalCenter: parent.verticalCenter
+        }
+
+        PinWell {
+          id: leftInnerWell
+          region: "left"
+          kind: "inner"
+          list: leftInner
+          anchors.left: leftDeck.right
+          anchors.verticalCenter: parent.verticalCenter
+        }
+
+        PinWell {
+          id: rightWell
+          region: "right"
+          kind: "outer"
+          list: rightPinned
+          anchors.right: parent.right
+          anchors.rightMargin: Style.space(8)
+          anchors.verticalCenter: parent.verticalCenter
         }
 
         ModuleList {
           id: rightPinned
-          readonly property var pinnedIndices: root.splitIndices(root.layoutEntries("right"), true)
-          entries: root.pickEntries(root.layoutEntries("right"), pinnedIndices)
-          indices: pinnedIndices
+          readonly property var zoneIndices: root.splitIndices(root.layoutEntries("right"), "outer")
+          entries: root.pickEntries(root.layoutEntries("right"), zoneIndices)
+          indices: zoneIndices
           region: "right"
           anchors.right: parent.right
           anchors.rightMargin: Style.space(8)
@@ -1427,8 +1456,34 @@ Item {
           id: rightDeck
           anchors.right: rightPinned.entries.length > 0 ? rightPinned.left : rightWell.left
           anchors.verticalCenter: parent.verticalCenter
-          budget: Math.max(0, (rightPinned.entries.length > 0 ? rightPinned.x : rightWell.x) - centerModules.contentRight - root.carouselGap)
+          budget: Math.max(0, (rightPinned.entries.length > 0 ? rightPinned.x : rightWell.x) - centerModules.contentRight - rightInner.width - rightInnerWell.width - root.carouselGap)
+          minBudget: Math.max(0, (rightPinned.entries.length > 0 ? rightPinned.x : rightWell.x) - centerModules.contentRight - rightInner.minTotal - root.carouselGap)
         }
+
+        ModuleList {
+          id: rightInner
+          readonly property var zoneIndices: root.splitIndices(root.layoutEntries("right"), "inner")
+          entries: root.pickEntries(root.layoutEntries("right"), zoneIndices)
+          indices: zoneIndices
+          region: "right"
+          blockStretch: rightDeck.overflowing
+          anchors.right: rightDeck.left
+          anchors.verticalCenter: parent.verticalCenter
+        }
+
+        PinWell {
+          id: rightInnerWell
+          region: "right"
+          kind: "inner"
+          list: rightInner
+          anchors.right: rightDeck.left
+          anchors.verticalCenter: parent.verticalCenter
+        }
+
+        PinZoneGlow { zone: leftPinned }
+        PinZoneGlow { zone: leftInner }
+        PinZoneGlow { zone: rightPinned }
+        PinZoneGlow { zone: rightInner }
 
         // "There is more this way" at both ends of a scrolling strip: the
         // widgets fade under a wash of bar colour and a chevron breathes.
@@ -1815,7 +1870,7 @@ Item {
   }
 
   component LeftModules: ScrollDeck {
-    readonly property var stripIndices: root.splitIndices(root.layoutEntries("left"), false)
+    readonly property var stripIndices: root.splitIndices(root.layoutEntries("left"), "")
     entries: root.pickEntries(root.layoutEntries("left"), stripIndices)
     indices: stripIndices
     region: "left"
@@ -1823,7 +1878,7 @@ Item {
   }
 
   component RightModules: ScrollDeck {
-    readonly property var stripIndices: root.splitIndices(root.layoutEntries("right"), false)
+    readonly property var stripIndices: root.splitIndices(root.layoutEntries("right"), "")
     entries: root.pickEntries(root.layoutEntries("right"), stripIndices)
     indices: stripIndices
     region: "right"
@@ -1842,6 +1897,18 @@ Item {
     property int offset: 0
     property var indices: []
     function regionIndexOf(index) { return indices.length > 0 ? indices[index] : offset + index }
+    // Tell stretch widgets in this list to hold their configured width.
+    property bool blockStretch: false
+    // The narrowest this list can get if its stretch widgets shrink.
+    property var minWidths: []
+    readonly property real minTotal: BarModel.cumulativeWidths(minWidths.slice(0, entries.length))[Math.min(minWidths.length, entries.length)] || 0
+    function setMinWidth(index, value) {
+      var w = Math.max(0, Number(value) || 0)
+      if (minWidths[index] === w) return
+      var next = minWidths.slice()
+      next[index] = w
+      minWidths = next
+    }
     // A hidden list must not build its modules. The center section declares
     // both an anchored and an unanchored arrangement and shows whichever
     // fits, so building both would mount every center module twice — two
@@ -1867,6 +1934,9 @@ Item {
           entry: modelData
           region: moduleListRoot.region
           regionIndex: moduleListRoot.regionIndexOf(index)
+          blockStretch: moduleListRoot.blockStretch
+          onMinimumWidthChanged: moduleListRoot.setMinWidth(index, minimumWidth)
+          Component.onCompleted: moduleListRoot.setMinWidth(index, minimumWidth)
         }
       }
     }
@@ -1887,10 +1957,17 @@ Item {
     // keep their corner and scrolling reveals the ones nearer the center.
     property bool fromEnd: false
     property real budget: 0
+    // The budget the overflow decision is judged on (inner stretch widgets
+    // at their minimum). Defaults to the actual budget.
+    property real minBudget: -1
+    readonly property real decisionBudget: minBudget >= 0 ? minBudget : budget
     readonly property var pinnedIds: {
       var all = root.layoutEntries(region)
-      var out = []
-      for (var i = 0; i < all.length; i++) if (root.isPinnedEntry(all[i])) out.push(root.entryId(all[i]))
+      var out = { outer: [], inner: [] }
+      for (var i = 0; i < all.length; i++) {
+        var kind = root.pinKind(all[i])
+        if (kind) out[kind].push(root.entryId(all[i]))
+      }
       return out
     }
 
@@ -1911,11 +1988,11 @@ Item {
       // room is left to do so on a flat strip. Fitting always wins; the band
       // only delays turning the ring on, so a strip that momentarily
       // overflowed while the bar was still measuring itself settles flat.
-      if (overflowing) { if (minTotal <= budget + 0.5) overflowing = false }
-      else if (minTotal > budget + root.fitTolerance) overflowing = true
+      if (overflowing) { if (minTotal <= decisionBudget + 0.5) overflowing = false }
+      else if (minTotal > decisionBudget + root.fitTolerance) overflowing = true
     }
     onMinTotalChanged: decideOverflow()
-    onBudgetChanged: decideOverflow()
+    onDecisionBudgetChanged: decideOverflow()
     readonly property real viewport: overflowing ? Math.max(0, budget) : total
     readonly property real ring: total + (overflowing ? root.loopGap : 0)
     readonly property real homeOffset: BarModel.homeOffset(total, viewport, fromEnd)
@@ -2053,6 +2130,7 @@ Item {
     id: well
 
     property string region: ""
+    property string kind: "outer"
     property var list: null
     readonly property bool isPinWell: true
     readonly property bool active: root.barDragSource !== null && list !== null && list.entries.length === 0
@@ -2082,7 +2160,8 @@ Item {
     Text {
       anchors.centerIn: parent
       textFormat: Text.PlainText
-      text: "\u2299"
+      text: hint_kind_glyph()
+      function hint_kind_glyph() { return well.kind === "inner" ? "\u25c9" : "\u2299" }
       color: Color.accent
       font.family: root.fontFamily
       font.pixelSize: Style.font.body
@@ -2222,7 +2301,8 @@ Item {
     // ring keeps changing. On an overflowing strip they are told not to
     // stretch and settle at their configured width; on a flat strip they fill
     // the room exactly as they do on the stock bar.
-    readonly property bool stripScrolling: deck !== null && deck.overflowing
+    property bool blockStretch: false
+    readonly property bool stripScrolling: (deck !== null && deck.overflowing) || blockStretch
     readonly property var moduleSettings: {
       var settings = root.entrySettings(entry)
       if (!stripScrolling) return settings

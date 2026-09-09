@@ -137,13 +137,24 @@ test("moveEntryByRef handles duplicates and missing regions", () => {
   assert.deepEqual(ids(l.right), ["c"])
 })
 
-test("setEntryPinned flags, clears and promotes string entries", () => {
-  const l = { left: ["a", e("b"), e("c", { pinned: true })] }
-  assert.equal(M.setEntryPinned(l, "left", 0, true), true)
+test("pinKind reads outer, inner and none", () => {
+  assert.equal(M.pinKind(e("a", { pinned: true })), "outer")
+  assert.equal(M.pinKind(e("a", { pinned: "outer" })), "outer")
+  assert.equal(M.pinKind(e("a", { pinned: "inner" })), "inner")
+  assert.equal(M.pinKind(e("a")), "")
+  assert.equal(M.pinKind("a"), "")
+})
+
+test("setEntryPinned sets zones, clears and promotes string entries", () => {
+  const l = { left: ["a", e("b"), e("c", { pinned: true }), e("d", { pinned: "inner" })] }
+  assert.equal(M.setEntryPinned(l, "left", 0, "outer"), true)
   assert.deepEqual(l.left[0], { id: "a", pinned: true })
-  assert.equal(M.setEntryPinned(l, "left", 1, false), false)     // already unpinned
-  assert.equal(M.setEntryPinned(l, "left", 2, false), true)
+  assert.equal(M.setEntryPinned(l, "left", 1, ""), false)          // already on the carousel
+  assert.equal(M.setEntryPinned(l, "left", 1, "inner"), true)
+  assert.deepEqual(l.left[1], { id: "b", pinned: "inner" })
+  assert.equal(M.setEntryPinned(l, "left", 2, ""), true)
   assert.deepEqual(l.left[2], { id: "c" })
+  assert.equal(M.setEntryPinned(l, "left", 3, "inner"), false)     // unchanged
   assert.equal(M.setEntryPinned(l, "left", 7, true), false)
   assert.equal(M.setEntryPinned(l, "nope", 0, true), false)
 })
