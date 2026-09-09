@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="200" viewBox="0 0 960 200" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">
+  <defs>
+    <linearGradient id="fadeL" x1="0" x2="1"><stop offset="0" stop-color="#0f1320"/><stop offset="1" stop-color="#0f1320" stop-opacity="0"/></linearGradient>
+    <linearGradient id="fadeR" x1="0" x2="1"><stop offset="0" stop-color="#0f1320" stop-opacity="0"/><stop offset="1" stop-color="#0f1320"/></linearGradient>
+  </defs>
+  <rect width="960" height="200" fill="#0b0e17" rx="10"/>
+  <text x="480" y="26" text-anchor="middle" fill="#cbd2e6" font-size="15">One bar, seven zones. Only the two strips ever move.</text>
+  <!-- bar -->
+  <rect x="20" y="56" width="920" height="40" fill="#0f1320" stroke="#2a3350"/>
+  <!-- left corner -->
+  <rect x="20" y="56" width="120" height="40" fill="#233a6b"/>
+  <text x="80" y="80" text-anchor="middle" fill="#dbe6ff">corner</text>
+  <!-- left strip -->
+  <rect x="140" y="56" width="180" height="40" fill="#123d3a"/>
+  <rect x="140" y="56" width="26" height="40" fill="url(#fadeL)"/>
+  <rect x="294" y="56" width="26" height="40" fill="url(#fadeR)"/>
+  <text x="230" y="80" text-anchor="middle" fill="#bff5ec">‹ strip ›</text>
+  <!-- left inner -->
+  <rect x="320" y="56" width="110" height="40" fill="#3a2a5c"/>
+  <text x="375" y="80" text-anchor="middle" fill="#e8d9ff">inner</text>
+  <!-- center -->
+  <rect x="430" y="56" width="100" height="40" fill="#1f2433"/>
+  <text x="480" y="80" text-anchor="middle" fill="#c9cfe0">center</text>
+  <!-- right inner -->
+  <rect x="530" y="56" width="110" height="40" fill="#3a2a5c"/>
+  <text x="585" y="80" text-anchor="middle" fill="#e8d9ff">inner</text>
+  <!-- right strip -->
+  <rect x="640" y="56" width="180" height="40" fill="#123d3a"/>
+  <rect x="640" y="56" width="26" height="40" fill="url(#fadeL)"/>
+  <rect x="794" y="56" width="26" height="40" fill="url(#fadeR)"/>
+  <text x="730" y="80" text-anchor="middle" fill="#bff5ec">‹ strip ›</text>
+  <!-- right corner -->
+  <rect x="820" y="56" width="120" height="40" fill="#233a6b"/>
+  <text x="880" y="80" text-anchor="middle" fill="#dbe6ff">corner</text>
+  <!-- captions -->
+  <g fill="#9aa4c2">
+    <text x="80" y="122" text-anchor="middle">pinned, fixed</text>
+    <text x="80" y="138" text-anchor="middle">launcher, workspaces</text>
+    <text x="230" y="122" text-anchor="middle">scrolls when full</text>
+    <text x="230" y="138" text-anchor="middle">wheel, swipe, loops</text>
+    <text x="375" y="122" text-anchor="middle">pinned, fixed</text>
+    <text x="375" y="138" text-anchor="middle">Burn Bar, Beatdeck</text>
+    <text x="480" y="122" text-anchor="middle">never moves</text>
+    <text x="480" y="138" text-anchor="middle">indicators, clock</text>
+    <text x="585" y="122" text-anchor="middle">pinned, fixed</text>
+    <text x="730" y="122" text-anchor="middle">scrolls when full</text>
+    <text x="730" y="138" text-anchor="middle">home shows its tail</text>
+    <text x="880" y="122" text-anchor="middle">pinned, fixed</text>
+    <text x="880" y="138" text-anchor="middle">control, power, bell</text>
+  </g>
+  <text x="480" y="178" text-anchor="middle" fill="#7f8ab0">A strip whose widgets fit lays out flat and stays dormant. Drop a widget into any zone to move it there.</text>
+</svg>

@@ -1,46 +1,94 @@
 # MenuBar Overload
 
-The Omarchy bar with an endless carousel on each side, so the bar can hold
-more plugins than fit on the screen.
+**The Omarchy bar with an endless carousel on each side, so it can hold more
+plugins than fit on the screen.**
+
+![The bar at rest: everything fits, so it looks exactly like the stock bar](docs/images/bar-dormant.png)
+
+That is the whole bar on a 1920px laptop, 30 widgets, at rest. Nothing is
+scrolling because everything fits. Add a few more plugins and the sides turn
+into carousels:
+
+![Scrolling the left strip with the wheel](docs/images/carousel-scroll-2x.gif)
+
+## What it does
+
+![Seven zones: corner, strip, inner, center, inner, strip, corner](docs/images/zones.svg)
 
 The left and right sections become strips that scroll inside the room the
 center section leaves. A strip whose widgets fit is laid out exactly as
 before and stays dormant. One that overflows becomes a ring: every widget
 stays mounted, so timers, IPC handlers and services keep running, and the
 ones that do not fit sit past the edge of a clipped viewport until you scroll
-them in. The center section never scrolls.
+them in. The center never scrolls.
 
-- Scroll with the mouse wheel or a two-finger trackpad swipe anywhere over a
-  strip. Wheel down or swipe right moves the widgets right to left; wheel up
-  or swipe left brings them back. The motion eases, and the ring loops
-  forever in both directions.
-- The widgets under the pointer swell and tilt in 3D like a macOS dock as
-  they pass, and spread apart so they never overlap.
-- The fading edges and breathing chevrons at both ends say there is more
-  that way. Click a chevron to scroll a notch, right-click it to go home.
-- A scrolled strip drifts back home after 6 idle seconds. Click any widget on
-  it and it stays where you left it until you scroll again.
-- Pinned widgets never join the carousel. Each side has two pinned zones:
-  the corner (the launcher and workspaces on the far left, the bell, power
-  and control center on the far right) and the inner edge beside the center
-  (Burn Bar and Beatdeck, left of the system indicators and the clock). The
-  strip scrolls between them. Drag a widget into a zone to pin it there (the
-  zones light up while you drag; an empty zone shows a well to drop into),
-  drag it back onto the strip to unpin it, or use
-  `menubar-overload pin <id> outer|inner|off` /
-  `omarchy bar set <id> zone outer|inner`.
-- Widgets that stretch to fill free room (Burn Bar, Beatdeck) keep doing so
-  on a flat strip. The strip only starts scrolling when even their minimum
-  widths do not fit, and while it scrolls they sit at their configured width
-  instead of chasing a moving edge. Width changes ease rather than jump.
-- Drag and drop reordering still works, and a panel summoned by hotkey
-  (`omarchy-shell shell summon <id>`) scrolls its widget into view first.
+### Scroll it
 
-The right strip is home showing its tail, so the widgets in the corner stay
-in the corner and scrolling reveals the ones nearer the center. The left
-strip is home showing its head. New plugins land in the hidden part of either
-strip, which is exactly where `omarchy plugin enable` puts them on the right;
-`menubar-overload add <id> left` does the same for the left.
+Mouse wheel or a two-finger trackpad swipe anywhere over a strip. Wheel down
+or swipe right moves the widgets right to left; wheel up or swipe left brings
+them back. The motion eases, and the ring loops forever in both directions.
+
+![The ring and the viewport](docs/images/ring.svg)
+
+![Half way through a scroll: the latency widget arriving from the seam](docs/images/scroll-mid.png)
+
+![Twelve notches later the ring has gone all the way round](docs/images/loop-around-2x.png)
+
+### It magnifies like a dock
+
+The widgets under the pointer swell and tilt in 3D as they pass, and spread
+apart so they never overlap.
+
+![The icon under the pointer swelling, its neighbours pushed apart](docs/images/magnify-dock-2x.png)
+
+![Sweeping the pointer along a strip](docs/images/magnify-sweep-2x.gif)
+
+![The magnification curve](docs/images/magnify.svg)
+
+### It tells you there is more
+
+The edges of a scrolling strip fade under a wash of bar colour and a chevron
+breathes at each end. Click a chevron to scroll a notch, right-click it to go
+home.
+
+![A scrolling strip: fade and chevron at its inner edge](docs/images/left-scrolling-2x.png)
+
+### It stays where you put it
+
+A scrolled strip drifts back home after six idle seconds. Click any widget
+on it and it stays where you left it until you scroll again.
+
+### Pin what should never move
+
+Each side has two pinned zones, off the carousel. The **corner** holds the
+launcher and workspaces on the far left, the bell, power and control center
+on the far right. The **inner** zone sits beside the center, left of the
+system indicators and the clock; Burn Bar and Beatdeck live there and
+stretch into the free room exactly as they do on the stock bar.
+
+![Corner pins on the right: control center, display, power, bell stay put](docs/images/corner-pins-right-2x.png)
+
+![Beatdeck and Burn Bar in the inner zone, beside the weather and clock](docs/images/inner-zone-left-2x.png)
+
+Drag a widget into a zone to pin it there. While you drag, the zones light
+up and an empty zone shows a well to drop into. Drag it back onto the strip
+to unpin it.
+
+![Dragging Pastey: the corner glows and the empty inner zone shows its well](docs/images/drag-zones-right-2x.png)
+
+Drops are zone-aware: a widget let go left of the center content lands in
+the left section, right of it in the right section, so nothing slips into
+the center by accident.
+
+### It is kind to widgets that change size
+
+Stretch widgets (Burn Bar, Beatdeck) shrink to make room before a strip
+starts scrolling, and hold their configured width while it scrolls instead
+of chasing a moving edge. A widget that grows is given its room at once; one
+that shrinks eases, so the strip flows rather than jumps.
+
+Hotkey-summoned panels (`omarchy-shell shell summon <id>`) scroll their
+widget into view first.
 
 ## Install
 
@@ -51,8 +99,7 @@ git clone https://github.com/nixfred/menu.bar.overload ~/Projects/menu.bar.overl
 
 `install.sh` symlinks `nixfred.menubar-overload` into
 `~/.config/omarchy/plugins/` and, with `--use`, makes it the active bar. To go
-back to the previous bar: `omarchy bar use pi.bar` (or `omarchy bar reset`
-for the stock one).
+back: `omarchy bar use pi.bar` (or `omarchy bar reset` for the stock one).
 
 There is no daemon to run: the bar lives inside `omarchy-shell`, which
 Hyprland starts at login, and the shell loads whichever bar `shell.json`
@@ -107,20 +154,29 @@ Settings live in the `bar.carousel` block of `~/.config/omarchy/shell.json`:
               "edgeHints": true }
 ```
 
+A widget's zone is the `zone` key on its layout entry (`"outer"` or
+`"inner"`), which `omarchy bar set <id> zone inner` also writes. The key
+is deliberately not `pinned`: the tray widget keeps its pinned icon ids
+there.
+
 On a strip that overflows, the wheel scrolls the strip even over a widget
 that normally takes the wheel (volume, brightness); hold Ctrl to reach the
 widget. When everything fits, widgets keep the wheel as before.
 
 ## How it works
 
-`Bar.qml` replaces the bar's `ModuleList` for the side sections with a
-`ScrollDeck`. Each slot reports its width; `BarModel.ringView` turns the
-widths, the viewport, the scroll offset and the pointer position into an x,
-scale and tilt for every entry. The offset is a plain number the deck eases
-toward a target the bar shares across monitors, so a scroll is a translation
-and the ring wraps by arithmetic. Magnified widgets are re-packed outward from
-the one nearest the pointer at their scaled widths, which is what keeps them
-from overlapping.
+`Bar.qml` lays each side out as corner list, `ScrollDeck`, inner list. Each
+slot reports its width; `BarModel.ringView` turns the widths, the viewport,
+the scroll offset and the pointer position into an x, scale and tilt for
+every entry. The offset is a plain number the deck eases toward a target the
+bar shares across monitors, so a scroll is a translation and the ring wraps
+by arithmetic, always outside the viewport. Magnified widgets are re-packed
+outward from the one nearest the pointer at their scaled widths, which is
+what keeps them from overlapping.
+
+The strip judges whether it must scroll on a budget that assumes its stretch
+widgets at their minimum, so they shrink before it scrolls; while it scrolls
+they are told not to stretch.
 
 Drag and drop addresses entries as `{id, occurrence}` references rather than
 names, so layouts with repeated ids (spacers) stay unambiguous.
@@ -128,4 +184,5 @@ names, so layouts with repeated ids (spacers) stay unambiguous.
 Bar plugin code is not hot-reloaded by the shell the way widget plugins are;
 after editing `Bar.qml` run `omarchy restart shell`.
 
-Tests for the pure layout model: `node --test tests/`.
+Tests for the pure layout model: `node --test tests/`. The pre-release bug
+check by Codex, and what was done about it, is in `docs/reviews/`.
