@@ -121,6 +121,7 @@ Item {
   // Scroll offsets live here so every monitor's copy of a section shows the
   // same run; each deck animates toward the shared target on its own.
   property var decks: []
+  property var pinWells: []
   property var offsets: ({ left: 0, right: 0 })
   // A strip a click has held in place (it will not drift home).
   property var holds: ({ left: false, right: false })
@@ -181,6 +182,17 @@ Item {
 
   function unregisterDeck(deck) {
     decks = decks.filter(function(item) { return item !== deck })
+  }
+
+  function registerPinWell(well) {
+    if (!well || pinWells.indexOf(well) !== -1) return
+    var next = pinWells.slice()
+    next.push(well)
+    pinWells = next
+  }
+
+  function unregisterPinWell(well) {
+    pinWells = pinWells.filter(function(item) { return item !== well })
   }
 
   function deckFor(region) {
@@ -905,6 +917,18 @@ Item {
 
       candidates.push({ slot: slot, x: slotPoint.x, y: slotPoint.y, width: slot.width, height: slot.height })
     }
+    // An empty pinned zone has no slot to drop beside; its well stands in.
+    for (var w = 0; w < pinWells.length; w++) {
+      var well = pinWells[w]
+      if (!well || !well.visible || well.width <= 0) continue
+      if (sourceWindow && !root.sameWindow(root.targetWindow(well), sourceWindow)) continue
+      var wellPoint = { x: well.x, y: well.y }
+      try {
+        wellPoint = well.mapToItem(null, 0, 0)
+      } catch (e) {
+      }
+      candidates.push({ slot: well, x: wellPoint.x, y: wellPoint.y, width: well.width, height: well.height })
+    }
 
     return BarModel.nearestDropTarget(candidates, scenePoint, root.vertical)
   }
@@ -912,6 +936,8 @@ Item {
   // Persist a drop. Entries are addressed as {id, occurrence} references
   // rather than names, so a layout with several spacers stays unambiguous.
   // "After the target" means in front of whatever follows it in the region.
+  // Where it lands decides whether it is pinned: beside a pinned widget or on
+  // an empty pinned zone's well pins it, beside a strip widget unpins it.
   function dropBarModuleAtTarget(sourceSlot, target, afterTarget) {
     if (!sourceSlot || !target) return false
     if (!root.shell || typeof root.shell.mutateShellConfig !== "function") return false
@@ -920,14 +946,26 @@ Item {
 
     var toRegion = target.region
     var entries = layoutEntries(toRegion)
-    var index = afterTarget ? target.regionIndex + 1 : target.regionIndex
-    var toRef = index < entries.length ? BarModel.entryRef(entries, index) : null
+    var toRef = null
+    var pin = false
+    if (target.isPinWell === true) {
+      // Left zone: in front of everything; right zone: after everything.
+      toRef = toRegion === "left" && entries.length > 0 ? BarModel.entryRef(entries, 0) : null
+      pin = true
+    } else {
+      var index = afterTarget ? target.regionIndex + 1 : target.regionIndex
+      toRef = index < entries.length ? BarModel.entryRef(entries, index) : null
+      pin = root.isPinnedEntry(target.entry)
+    }
 
     var changed = false
     root.shell.mutateShellConfig(function(config) {
       if (!Util.isPlainObject(config.bar)) config.bar = {}
       if (!Util.isPlainObject(config.bar.layout)) config.bar.layout = {}
-      changed = BarModel.moveEntryByRef(config.bar.layout, sourceSlot.region, fromRef, toRegion, toRef)
+      var result = BarModel.moveEntryByRef(config.bar.layout, sourceSlot.region, fromRef, toRegion, toRef)
+      if (result.index < 0) return
+      var flagged = BarModel.setEntryPinned(config.bar.layout, toRegion, result.index, pin)
+      changed = result.moved || flagged
     })
     return changed
   }
@@ -1311,7 +1349,29 @@ Item {
         // Each side strip gets the room between the bar edge and the center
         // content, minus a gap.
         // Pinned widgets hold the corners; the strips take what is left
-        // between them and the center.
+        // between them and the center. While a drag is live the corners show
+        // as drop zones: drop there to pin, drop on a strip to unpin.
+        PinWell {
+          id: leftWell
+          region: "left"
+          list: leftPinned
+          anchors.left: parent.left
+          anchors.leftMargin: Style.space(8)
+          anchors.verticalCenter: parent.verticalCenter
+        }
+
+        PinWell {
+          id: rightWell
+          region: "right"
+          list: rightPinned
+          anchors.right: parent.right
+          anchors.rightMargin: Style.space(8)
+          anchors.verticalCenter: parent.verticalCenter
+        }
+
+        PinZoneGlow { zone: leftPinned }
+        PinZoneGlow { zone: rightPinned }
+
         ModuleList {
           id: leftPinned
           readonly property var pinnedIndices: root.splitIndices(root.layoutEntries("left"), true)
@@ -1325,9 +1385,9 @@ Item {
 
         LeftModules {
           id: leftDeck
-          anchors.left: leftPinned.right
+          anchors.left: leftPinned.entries.length > 0 ? leftPinned.right : leftWell.right
           anchors.verticalCenter: parent.verticalCenter
-          budget: Math.max(0, centerModules.contentLeft - leftPinned.x - leftPinned.width - root.carouselGap)
+          budget: Math.max(0, centerModules.contentLeft - x - root.carouselGap)
         }
 
         ModuleList {
@@ -1343,9 +1403,9 @@ Item {
 
         RightModules {
           id: rightDeck
-          anchors.right: rightPinned.left
+          anchors.right: rightPinned.entries.length > 0 ? rightPinned.left : rightWell.left
           anchors.verticalCenter: parent.verticalCenter
-          budget: Math.max(0, rightPinned.x - centerModules.contentRight - root.carouselGap)
+          budget: Math.max(0, (rightPinned.entries.length > 0 ? rightPinned.x : rightWell.x) - centerModules.contentRight - root.carouselGap)
         }
 
         // "There is more this way" at both ends of a scrolling strip: the
@@ -1946,6 +2006,67 @@ Item {
         Component.onCompleted: strip.setWidth(index, implicitWidth)
       }
     }
+  }
+
+  // The drop target for an empty pinned zone, shown only while a drag is
+  // live. Dropping here pins the widget to this corner.
+  component PinWell: Item {
+    id: well
+
+    property string region: ""
+    property var list: null
+    readonly property bool isPinWell: true
+    readonly property bool active: root.barDragSource !== null && list !== null && list.entries.length === 0
+
+    visible: active
+    width: active ? Style.space(30) : 0
+    height: root.barSize
+    z: 5
+
+    Component.onCompleted: root.registerPinWell(well)
+    Component.onDestruction: root.unregisterPinWell(well)
+
+    Rectangle {
+      anchors.fill: parent
+      anchors.margins: Style.space(4)
+      radius: Math.min(Style.cornerRadius, height / 2)
+      color: Color.accent
+      opacity: root.barDragTarget === well ? 0.35 : 0.14
+      border.width: 1
+      border.color: Color.accent
+
+      Behavior on opacity {
+        NumberAnimation { duration: 120 }
+      }
+    }
+
+    Text {
+      anchors.centerIn: parent
+      textFormat: Text.PlainText
+      text: "\u2299"
+      color: Color.accent
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.body
+      renderType: Text.NativeRendering
+    }
+  }
+
+  // A soft outline around a corner's pinned widgets while a drag is live, so
+  // the corner reads as the place to drop things that should stay put.
+  component PinZoneGlow: Rectangle {
+    property var zone: null
+
+    visible: root.barDragSource !== null && zone !== null && zone.entries.length > 0
+    x: zone ? zone.x - Style.space(3) : 0
+    y: zone ? zone.y - Style.space(2) : 0
+    width: zone ? zone.width + Style.space(6) : 0
+    height: zone ? zone.height + Style.space(4) : 0
+    radius: Math.min(Style.cornerRadius, height / 2)
+    color: Color.accent
+    opacity: 0.12
+    border.width: 1
+    border.color: Color.accent
+    z: -1
   }
 
   // One end of a scrolling strip. The widgets fade under a wash of bar

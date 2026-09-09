@@ -415,25 +415,44 @@ function indexOfRef(entries, ref) {
 
 // Move one entry inside a raw shell.json layout. `layout` is config.bar.layout
 // (mutated in place). `toRef` names the entry the moved one lands in front of;
-// null appends to the region. Returns false when nothing changed.
+// null appends to the region. Returns { index, moved }: where the entry now
+// sits in toRegion, and whether anything changed. index is -1 when the source
+// was not found.
 function moveEntryByRef(layout, fromRegion, fromRef, toRegion, toRef) {
-  if (!isPlainObject(layout)) return false
-  if (!Array.isArray(layout[fromRegion]) || !fromRef) return false
+  if (!isPlainObject(layout)) return { index: -1, moved: false }
+  if (!Array.isArray(layout[fromRegion]) || !fromRef) return { index: -1, moved: false }
   if (!Array.isArray(layout[toRegion])) layout[toRegion] = []
 
   var fromEntries = layout[fromRegion]
   var toEntries = layout[toRegion]
   var fromIndex = indexOfRef(fromEntries, fromRef)
-  if (fromIndex < 0) return false
+  if (fromIndex < 0) return { index: -1, moved: false }
 
   var toIndex = toRef ? indexOfRef(toEntries, toRef) : toEntries.length
   if (toIndex < 0) toIndex = toEntries.length
-  if (fromRegion === toRegion && (toIndex === fromIndex || toIndex === fromIndex + 1)) return false
+  if (fromRegion === toRegion && (toIndex === fromIndex || toIndex === fromIndex + 1)) return { index: fromIndex, moved: false }
 
   var moved = fromEntries.splice(fromIndex, 1)[0]
   if (fromRegion === toRegion && fromIndex < toIndex) toIndex--
   toEntries.splice(toIndex, 0, moved)
-  return true
+  return { index: toIndex, moved: true }
+}
+
+// Set or clear the pinned flag on one raw layout entry. Returns true when the
+// entry changed. String entries are promoted to objects first.
+function setEntryPinned(layout, region, index, pinned) {
+  if (!isPlainObject(layout) || !Array.isArray(layout[region])) return false
+  var entries = layout[region]
+  if (index < 0 || index >= entries.length) return false
+  var entry = entries[index]
+  if (typeof entry === "string") entry = { id: entry }
+  if (!isPlainObject(entry)) return false
+  var was = entry.pinned === true
+  if (was === (pinned === true) && entries[index] === entry) return false
+  if (pinned) entry.pinned = true
+  else delete entry.pinned
+  entries[index] = entry
+  return was !== (pinned === true)
 }
 
 if (typeof module !== "undefined") {
@@ -465,6 +484,7 @@ if (typeof module !== "undefined") {
     entryOccurrence: entryOccurrence,
     entryRef: entryRef,
     indexOfRef: indexOfRef,
-    moveEntryByRef: moveEntryByRef
+    moveEntryByRef: moveEntryByRef,
+    setEntryPinned: setEntryPinned
   }
 }

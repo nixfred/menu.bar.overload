@@ -113,26 +113,37 @@ function layout(left, right) { return { left, center: [], right } }
 
 test("moveEntryByRef moves before a target and appends on null", () => {
   const l = layout([e("a"), e("b"), e("c")], [e("r")])
-  assert.equal(M.moveEntryByRef(l, "left", { id: "c", occurrence: 0 }, "left", { id: "a", occurrence: 0 }), true)
+  assert.deepEqual(M.moveEntryByRef(l, "left", { id: "c", occurrence: 0 }, "left", { id: "a", occurrence: 0 }), { index: 0, moved: true })
   assert.deepEqual(ids(l.left), ["c", "a", "b"])
-  assert.equal(M.moveEntryByRef(l, "left", { id: "a", occurrence: 0 }, "right", null), true)
+  assert.deepEqual(M.moveEntryByRef(l, "left", { id: "a", occurrence: 0 }, "right", null), { index: 1, moved: true })
   assert.deepEqual(ids(l.left), ["c", "b"])
   assert.deepEqual(ids(l.right), ["r", "a"])
 })
 
-test("moveEntryByRef reports no-ops for the same gap", () => {
+test("moveEntryByRef reports no-ops for the same gap but still says where", () => {
   const l = layout([e("a"), e("b"), e("c")], [])
-  assert.equal(M.moveEntryByRef(l, "left", { id: "b", occurrence: 0 }, "left", { id: "b", occurrence: 0 }), false)
-  assert.equal(M.moveEntryByRef(l, "left", { id: "b", occurrence: 0 }, "left", { id: "c", occurrence: 0 }), false)
+  assert.deepEqual(M.moveEntryByRef(l, "left", { id: "b", occurrence: 0 }, "left", { id: "b", occurrence: 0 }), { index: 1, moved: false })
+  assert.deepEqual(M.moveEntryByRef(l, "left", { id: "b", occurrence: 0 }, "left", { id: "c", occurrence: 0 }), { index: 1, moved: false })
   assert.deepEqual(ids(l.left), ["a", "b", "c"])
 })
 
 test("moveEntryByRef handles duplicates and missing regions", () => {
   const S = e("omarchy.spacer")
   const l = { left: [e("a"), S, e("b"), S, e("c")] }
-  assert.equal(M.moveEntryByRef(l, "left", { id: "a", occurrence: 0 }, "left", { id: "omarchy.spacer", occurrence: 1 }), true)
+  assert.equal(M.moveEntryByRef(l, "left", { id: "a", occurrence: 0 }, "left", { id: "omarchy.spacer", occurrence: 1 }).moved, true)
   assert.deepEqual(ids(l.left), ["omarchy.spacer", "b", "a", "omarchy.spacer", "c"])
-  assert.equal(M.moveEntryByRef(l, "left", { id: "nope", occurrence: 0 }, "right", null), false)
-  assert.equal(M.moveEntryByRef(l, "left", { id: "c", occurrence: 0 }, "right", null), true)
+  assert.equal(M.moveEntryByRef(l, "left", { id: "nope", occurrence: 0 }, "right", null).index, -1)
+  assert.equal(M.moveEntryByRef(l, "left", { id: "c", occurrence: 0 }, "right", null).moved, true)
   assert.deepEqual(ids(l.right), ["c"])
+})
+
+test("setEntryPinned flags, clears and promotes string entries", () => {
+  const l = { left: ["a", e("b"), e("c", { pinned: true })] }
+  assert.equal(M.setEntryPinned(l, "left", 0, true), true)
+  assert.deepEqual(l.left[0], { id: "a", pinned: true })
+  assert.equal(M.setEntryPinned(l, "left", 1, false), false)     // already unpinned
+  assert.equal(M.setEntryPinned(l, "left", 2, false), true)
+  assert.deepEqual(l.left[2], { id: "c" })
+  assert.equal(M.setEntryPinned(l, "left", 7, true), false)
+  assert.equal(M.setEntryPinned(l, "nope", 0, true), false)
 })

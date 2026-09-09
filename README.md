@@ -20,10 +20,12 @@ them in. The center section never scrolls.
   that way. Click a chevron to scroll a notch, right-click it to go home.
 - A scrolled strip drifts back home after 6 idle seconds. Click any widget on
   it and it stays where you left it until you scroll again.
-- Pinned widgets never join the carousel. Flag one with
-  `menubar-overload pin <id>` (or `omarchy bar set <id> pinned true`) and it
-  holds the bar's outer edge in layout order: the launcher and workspaces on
-  the far left, the bell, power and control center on the far right.
+- Pinned widgets never join the carousel. They hold the bar's outer edges in
+  layout order: the launcher and workspaces on the far left, the bell, power
+  and control center on the far right. Drag a widget into a corner zone to
+  pin it (the zones light up while you drag; an empty corner shows a well to
+  drop into), drag it back onto a strip to unpin it, or use
+  `menubar-overload pin <id>` / `omarchy bar set <id> pinned true`.
 - Drag and drop reordering still works, and a panel summoned by hotkey
   (`omarchy-shell shell summon <id>`) scrolls its widget into view first.
 
