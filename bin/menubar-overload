@@ -41,10 +41,11 @@ write_config() {
   local program=$1; shift
   if command -v omarchy-shell-config-edit >/dev/null 2>&1; then
     local base edited; base=$(mktemp); edited=$(mktemp)
+    # shellcheck disable=SC2064
+    trap "rm -f '$base' '$edited'" EXIT
     omarchy-shell-config-edit snapshot "$base" >/dev/null
     jq -S -e "$@" "$program" "$base" >"$edited" || die "could not build the edited configuration"
     omarchy-shell-config-edit apply "$base" "$edited"
-    rm -f "$base" "$edited"
   else
     # shellcheck disable=SC1090
     source "$(command -v omarchy-shell-config)"

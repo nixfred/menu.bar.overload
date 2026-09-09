@@ -118,11 +118,13 @@ Item {
   // the widgets under the pointer swell and tilt like a dock. The center
   // never scrolls.
   //
-  // Scroll offsets live here so every monitor's copy of a section shows the
-  // same run; each deck animates toward the shared target on its own.
+  // What is shared across monitors is the distance from home, in pixels:
+  // zero on every screen means home, whatever each screen's viewport makes
+  // home in absolute terms. Each deck adds its own home offset and eases
+  // toward that on its own.
   property var decks: []
   property var pinWells: []
-  property var offsets: ({ left: 0, right: 0 })
+  property var deltas: ({ left: 0, right: 0 })
   // A strip a click has held in place (it will not drift home).
   property var holds: ({ left: false, right: false })
   property var lastScrollAt: ({ left: 0, right: 0 })
@@ -146,7 +148,7 @@ Item {
   property var pendingSummon: null
 
   function isScrollingRegion(region) { return region === "left" || region === "right" }
-  function offsetOf(region) { return Number(offsets[region]) || 0 }
+  function deltaOf(region) { return Number(deltas[region]) || 0 }
   function isHeld(region) { return holds[region] === true }
 
   // Each side has three zones. Entries with `"zone": "outer"` sit fixed at
@@ -211,7 +213,7 @@ Item {
     return fallback
   }
 
-  function setOffset(region, value, byUser) {
+  function setDelta(region, value, byUser) {
     if (!isScrollingRegion(region)) return false
     var next = Number(value)
     if (!isFinite(next)) return false
@@ -220,26 +222,26 @@ Item {
     lastScrollAt = stamp
     // Scrolling again releases a click's hold; the strip drifts home once idle.
     if (byUser) setHeld(region, false)
-    if (Math.abs(next - offsetOf(region)) < 0.01) return false
-    var copy = Util.cloneJson(offsets)
+    if (Math.abs(next - deltaOf(region)) < 0.01) return false
+    var copy = Util.cloneJson(deltas)
     copy[region] = next
-    offsets = copy
+    deltas = copy
     return true
   }
 
-  function scrollBy(region, pixels) { return setOffset(region, offsetOf(region) + (Number(pixels) || 0), true) }
+  function scrollBy(region, pixels) { return setDelta(region, deltaOf(region) + (Number(pixels) || 0), true) }
 
   function isHome(region) {
     var deck = deckFor(region)
     if (!deck || !deck.overflowing) return true
-    var distance = Math.abs(offsetOf(region) - BarModel.nearestHome(offsetOf(region), deck.homeOffset, deck.ring))
-    return distance < 0.5
+    return Math.abs(deltaOf(region)) < 0.5
   }
 
+  // Home is delta zero on every screen; each deck takes the short way round
+  // its own ring to get there (see ScrollDeck.onTargetOffsetChanged).
   function scrollHome(region, byUser) {
-    var deck = deckFor(region)
-    if (!deck) return false
-    return setOffset(region, BarModel.nearestHome(offsetOf(region), deck.homeOffset, deck.ring), byUser === true)
+    if (!isScrollingRegion(region)) return false
+    return setDelta(region, 0, byUser === true)
   }
 
   function setHeld(region, value) {
@@ -290,7 +292,7 @@ Item {
       var deck = deckFor(region)
       out[region] = {
         overflowing: deck ? deck.overflowing : false,
-        offset: Math.round(offsetOf(region)),
+        offset: Math.round(deltaOf(region)),
         home: isHome(region),
         held: isHeld(region),
         hidden: deck ? deck.hiddenCount : 0,
@@ -346,7 +348,7 @@ Item {
 
     function scroll(region: string, pixels: real): string {
       root.scrollBy(region, pixels)
-      return String(Math.round(root.offsetOf(region)))
+      return String(Math.round(root.deltaOf(region)))
     }
     function home(region: string): string {
       if (region === "" || region === "all") { root.scrollHome("left", true); root.scrollHome("right", true) }
@@ -795,7 +797,7 @@ Item {
     var slot = slotForItem(item)
     if (slot && slot.deck && slot.deck.overflowing && !slot.shown) {
       var target = slot.deck.offsetToReveal(slot.deckIndex)
-      if (setOffset(slot.region, target, false)) {
+      if (setDelta(slot.region, target - slot.deck.homeOffset, false)) {
         pendingSummon = item
         summonTimer.restart()
         return true
@@ -2016,8 +2018,10 @@ Item {
     readonly property real viewport: overflowing ? Math.max(0, budget) : total
     readonly property real ring: overflowing ? BarModel.ringLength(total, viewport, root.loopGap, measured) : total
     readonly property real homeOffset: BarModel.homeOffset(total, viewport, fromEnd)
-    // The shared target from the bar; `offset` follows it with easing.
-    readonly property real targetOffset: overflowing ? root.offsetOf(region) : 0
+    // The bar shares a distance from home; this deck's target is its own
+    // home plus that distance, so a moving home (the center breathing) and
+    // a different viewport on another monitor both come out right.
+    readonly property real targetOffset: overflowing ? homeOffset + root.deltaOf(region) : 0
     property real offset: 0
     property bool easing: true
     property bool hovering: false
@@ -2053,32 +2057,18 @@ Item {
       return BarModel.offsetToReveal(measured, viewport, ring, offset, index)
     }
 
-    // Home moves when the center section breathes (the tail must stay flush
-    // right). A strip that is home follows it at once instead of drifting
-    // there seconds later.
-    property real lastHome: homeOffset
-    onHomeOffsetChanged: {
-      // Judge by the shared target, not the eased offset: widths arrive one
-      // by one at startup and home moves faster than the easing settles.
-      var target = root.offsetOf(region)
-      if (overflowing && Math.abs(target - BarModel.nearestHome(target, lastHome, ring)) < 0.5)
-        root.setOffset(region, BarModel.nearestHome(target, homeOffset, ring), false)
-      lastHome = homeOffset
-    }
-    // The moment a strip starts scrolling it should be home, not at offset 0.
-    onOverflowingChanged: if (overflowing && root.isHome(region) === false && Math.abs(root.offsetOf(region)) < 0.5) root.setOffset(region, homeOffset, false)
-
-    // A change by a whole number of rings draws identically, so take it
-    // without easing: that is how the bar folds an offset back onto [0, ring).
+    // Positions repeat every `ring` pixels, so any target plus a whole number
+    // of rings draws the same frame. Ease to the equivalent nearest the
+    // current offset: a long way home after many loops becomes the short
+    // way round, and a change that is exactly whole rings is a silent jump.
     onTargetOffsetChanged: {
-      var delta = targetOffset - offset
-      var turns = ring > 0 ? Math.round(Math.abs(delta) / ring) : 0
-      if (turns > 0 && Math.abs(Math.abs(delta) - turns * ring) < 0.5) {
+      var target = ring > 0 ? BarModel.nearestHome(offset, targetOffset, ring) : targetOffset
+      if (Math.abs(target - offset) < 0.5) {
         easing = false
-        offset = targetOffset
+        offset = target
         easing = true
       } else {
-        offset = targetOffset
+        offset = target
       }
     }
 
@@ -2097,8 +2087,10 @@ Item {
     height: implicitHeight
     clip: overflowing
 
+    // Growing eases (flat again, or the center let go of room); shrinking is
+    // immediate, so a center that just grew is never painted over.
     Behavior on width {
-      enabled: root.scrollAnimationMs > 0
+      enabled: root.scrollAnimationMs > 0 && strip.implicitWidth > strip.width
       NumberAnimation { duration: root.scrollAnimationMs; easing.type: Easing.OutCubic }
     }
 

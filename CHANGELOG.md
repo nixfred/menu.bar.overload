@@ -29,3 +29,9 @@ First packaged release.
   `stretch: false` counts as fixed width; visibility follows the magnified
   bounds; a hidden panel cancels its pending summon; the installer fails
   loudly and initialises a missing config; the boot unit quotes its path.
+- Pre-release bug check by Grok (docs/reviews/grok-0.9.md), all findings
+  fixed: the shared scroll state is a distance from home, so monitors with
+  different viewports agree on home and each takes the short way round its
+  own ring; a strip shrinks at once and only grows with easing, so it never
+  paints over a center that just grew; the installer compares real paths
+  and quotes them; the CLI cleans up its temp files on failure.

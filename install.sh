@@ -20,9 +20,9 @@ say() { (( quiet )) || echo "$*"; }
 
 mkdir -p "$plugins"
 target="$plugins/$id"
-if [[ -L $target ]]; then
-  [[ $(readlink -f "$target") == "$here/$id" ]] || { echo "refusing: $target links elsewhere ($(readlink "$target"))" >&2; exit 1; }
-elif [[ -e $target ]]; then
+if [[ -L "$target" ]]; then
+  [[ $(readlink -f "$target") == "$(readlink -f "$here/$id")" ]] || { echo "refusing: $target links elsewhere ($(readlink "$target"))" >&2; exit 1; }
+elif [[ -e "$target" ]]; then
   echo "refusing: $target exists and is not a symlink" >&2; exit 1
 else
   ln -s "$here/$id" "$target"
@@ -33,7 +33,7 @@ shell_up() { omarchy-shell shell ping >/dev/null 2>&1; }
 
 select_bar() {
   local current
-  if [[ ! -s $config ]]; then
+  if [[ ! -s "$config" ]]; then
     # No user config yet: start from Omarchy's defaults so the shell has a
     # complete file to read.
     local defaults="${OMARCHY_PATH:-/usr/share/omarchy}/config/omarchy/shell.json"
