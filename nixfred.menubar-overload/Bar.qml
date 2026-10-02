@@ -619,9 +619,13 @@ Item {
   function applyBarConfig() {
     var config = Util.isPlainObject(barConfig) ? barConfig : fallbackBarConfig
 
-    // This is a deliberately locked, macOS-style desktop bar. Keep its edge
-    // and opacity invariant even if another helper writes conflicting values.
-    position = "top"
+    // macOS-style bar: opacity stays invariant, but the edge is the user's
+    // call. Hardcoding position here silently ate every `omarchy bar position`
+    // write -- shell.json said "bottom" and the bar stayed on top, with no
+    // error anywhere, including when set from Atmos's Bar > Position control.
+    // normalizePosition falls back to "top" for an unset or bogus value, so
+    // top is still the default.
+    position = normalizePosition(config.position)
     setRequestedTransparency(false)
     centerAnchor = Util.canonicalWidgetId(config.centerAnchor || "")
 
