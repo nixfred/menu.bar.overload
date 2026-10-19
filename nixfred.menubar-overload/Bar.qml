@@ -5,6 +5,7 @@ import Quickshell.Wayland
 import QtQuick
 import QtQuick.Layouts
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 import "BarModel.js" as BarModel
 
@@ -69,14 +70,14 @@ Item {
   property string fontFamily: Style.font.family
   // Bound to the central Color singleton so the bar tracks shell.toml's
   // [bar] section. Property names kept for the rest of this file's bindings.
-  property color themeForeground: Color.bar.text
-  property color themeContrastForeground: Color.background
-  property color transparentForeground: Color.bar.text
+  property color themeForeground: Commons.Color.bar.text
+  property color themeContrastForeground: Commons.Color.background
+  property color transparentForeground: Commons.Color.bar.text
   property color foreground: themeForeground
   property color barForeground: useTransparentForeground ? transparentForeground : themeForeground
   property bool foregroundAnimationEnabled: true
-  property color background: Color.bar.background
-  property color urgent: Color.bar.active
+  property color background: Commons.Color.bar.background
+  property color urgent: Commons.Color.bar.active
 
   Behavior on barForeground { enabled: root.foregroundAnimationEnabled; ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   Behavior on background { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
@@ -1372,8 +1373,8 @@ Item {
         id: tooltipBubble
         implicitWidth: tooltipLabel.implicitWidth + 20
         implicitHeight: tooltipLabel.implicitHeight + 14
-        color: Color.tooltip.background
-        borderSpec: Border.surfaceSpec("tooltip", "border", Color.tooltip.border, 1)
+        color: Commons.Color.tooltip.background
+        borderSpec: Border.surfaceSpec("tooltip", "border", Commons.Color.tooltip.border, 1)
         radius: Style.cornerRadius
 
         Text {
@@ -1381,7 +1382,7 @@ Item {
           textFormat: Text.PlainText
           anchors.centerIn: parent
           text: root.tooltipText
-          color: Color.tooltip.text
+          color: Commons.Color.tooltip.text
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
           horizontalAlignment: Text.AlignHCenter
@@ -1608,7 +1609,7 @@ Item {
       y: targetRect ? Math.round(targetRect.y) : 0
       width: targetRect ? targetRect.width : 0
       height: targetRect ? targetRect.height : 0
-      color: Color.accent
+      color: Commons.Color.accent
       radius: Math.min(width, height) / 2
     }
   }
@@ -2163,10 +2164,10 @@ Item {
       anchors.fill: parent
       anchors.margins: Style.space(4)
       radius: Math.min(Style.cornerRadius, height / 2)
-      color: Color.accent
+      color: Commons.Color.accent
       opacity: root.barDragTarget === well ? 0.35 : 0.14
       border.width: 1
-      border.color: Color.accent
+      border.color: Commons.Color.accent
 
       Behavior on opacity {
         NumberAnimation { duration: 120 }
@@ -2178,7 +2179,7 @@ Item {
       textFormat: Text.PlainText
       text: hint_kind_glyph()
       function hint_kind_glyph() { return well.kind === "inner" ? "\u25c9" : "\u2299" }
-      color: Color.accent
+      color: Commons.Color.accent
       font.family: root.fontFamily
       font.pixelSize: Style.font.body
       renderType: Text.NativeRendering
@@ -2196,10 +2197,10 @@ Item {
     width: zone ? zone.width + Style.space(6) : 0
     height: zone ? zone.height + Style.space(4) : 0
     radius: Math.min(Style.cornerRadius, height / 2)
-    color: Color.accent
+    color: Commons.Color.accent
     opacity: 0.12
     border.width: 1
-    border.color: Color.accent
+    border.color: Commons.Color.accent
     z: -1
   }
 
@@ -2237,7 +2238,7 @@ Item {
       x: hint.atEnd ? parent.width - implicitWidth - Style.space(3) : Style.space(3)
       textFormat: Text.PlainText
       text: hint.atEnd ? "\u203a" : "\u2039"
-      color: Color.accent
+      color: Commons.Color.accent
       font.family: root.fontFamily
       font.pixelSize: Style.font.body + 6
       font.bold: true
@@ -2449,7 +2450,7 @@ Item {
 
       visible: opacity > 0
       opacity: slot.panelOpen && !slot.dragSource ? 0.9 : 0
-      color: Color.accent
+      color: Commons.Color.accent
       radius: Math.min(width, height) / 2
       width: root.vertical ? Style.space(2) : slot.panelIndicatorExtent
       height: root.vertical ? slot.panelIndicatorExtent : Style.space(2)
