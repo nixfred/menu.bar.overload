@@ -23,6 +23,11 @@
 #   menubar-overload set radius <px>          reach of the magnification (default 84)
 #   menubar-overload set tilt <degrees>       3D tilt at the edge of the reach (default 16)
 #   menubar-overload set edge-hints on|off    the fading edges and chevrons (default on)
+#   menubar-overload screen-scale             list the per-screen bar scales
+#   menubar-overload screen-scale <screen> <factor|off>
+#                                             draw the bar smaller or larger on one screen only:
+#                                             <screen> is its connector (HDMI-A-1) or model
+#                                             (C49RG9x), <factor> 0.4 to 3, off = back to normal
 #
 # Scrolling goes through the bar's own IPC. Settings are written to the
 # `bar.carousel` block of shell.json through `omarchy shell config-edit` where
@@ -82,6 +87,25 @@ cmd_set() {
   cmd_status
 }
 
+cmd_screen_scale() {
+  local screen=${1:-} value=${2:-}
+  if [[ -z $screen ]]; then
+    omarchy-shell shell listShellConfig | jq -r '(.bar.screenScale // {}) | if length == 0 then "no per-screen scale set" else to_entries[] | "\(.key): \(.value)" end'
+    return
+  fi
+  case $value in
+    off|reset|none)
+      write_config 'del(.bar.screenScale[$k]) | if ((.bar.screenScale // {}) | length) == 0 then del(.bar.screenScale) else . end' --arg k "$screen" ;;
+    [0-9]*)
+      [[ $value =~ ^[0-9]+([.][0-9]+)?$ ]] || die "factor takes a number"
+      awk -v v="$value" 'BEGIN { exit !(v >= 0.4 && v <= 3) }' || die "factor must be between 0.4 and 3"
+      write_config '.bar.screenScale[$k] = $v' --arg k "$screen" --argjson v "$value" ;;
+    *) die "usage: menubar-overload screen-scale [<screen> <factor|off>]" ;;
+  esac
+  sleep 0.3
+  cmd_screen_scale
+}
+
 cmd_add() {
   local id=${1:-} side=${2:-right}
   [[ -n $id ]] || die "usage: menubar-overload add <plugin-id> [left|right]"
@@ -131,6 +155,7 @@ case $cmd in
       | select($z == "outer" or $z == "inner") | "\($s) \(if $z == "inner" then "inner" else "corner" end): \(.id)"' ;;
   add) cmd_add "$@" ;;
   set) cmd_set "$@" ;;
-  -h|--help|help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//' ;;
+  screen-scale) cmd_screen_scale "$@" ;;
+  -h|--help|help) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) die "unknown command: $cmd (try: menubar-overload help)" ;;
 esac

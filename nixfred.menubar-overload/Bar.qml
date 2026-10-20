@@ -594,6 +594,21 @@ Item {
   readonly property bool vertical: position === "left" || position === "right"
   readonly property int barSize: vertical ? Style.bar.sizeVertical : Style.bar.sizeHorizontal
 
+  // Per-screen bar scale. `bar.screenScale` maps a screen's connector name ("HDMI-A-1")
+  // or its model ("C49RG9x") to a factor; unset or 1 leaves that screen alone. The bar
+  // on a scaled screen is laid out at the normal size in a space 1/factor larger and
+  // drawn at `factor`: a narrow screen holds more before the strips overflow, nothing
+  // collides, and the panel is `factor` as thick. Every other screen is untouched.
+  readonly property var screenScaleConfig: Util.isPlainObject(barConfig) && Util.isPlainObject(barConfig.screenScale) ? barConfig.screenScale : ({})
+  function screenScaleFor(screen) {
+    if (!screen) return 1
+    var raw = screenScaleConfig[String(screen.name || "")]
+    if (raw === undefined) raw = screenScaleConfig[String(screen.model || "")]
+    var n = Number(raw)
+    if (!isFinite(n) || n <= 0) return 1
+    return Math.max(0.4, Math.min(3, n))
+  }
+
   function normalizePosition(value) {
     return BarModel.normalizePosition(value)
   }
@@ -1278,6 +1293,12 @@ Item {
   component BarPanel: PanelWindow {
     id: barWindow
 
+    // This screen's scale (bar.screenScale). The content below is laid out at the normal
+    // bar size in a space 1/scaleFactor larger and drawn scaled, so the panel itself is
+    // `thickness` px thick and everything in it keeps its proportions.
+    readonly property real scaleFactor: root.screenScaleFor(barWindow.screen)
+    readonly property int thickness: Math.max(1, Math.round(root.barSize * scaleFactor))
+
     // Hiding parks the bar just past its screen edge instead of unmapping it.
     // Unmapping frees the layer surface and the whole scene graph, so every
     // reveal has to rebuild them — new surface, re-shaped glyphs, re-uploaded
@@ -1292,10 +1313,10 @@ Item {
     }
 
     margins {
-      top: root.barHidden && root.position === "top" ? -root.barSize : 0
-      bottom: root.barHidden && root.position === "bottom" ? -root.barSize : 0
-      left: root.barHidden && root.position === "left" ? -root.barSize : 0
-      right: root.barHidden && root.position === "right" ? -root.barSize : 0
+      top: root.barHidden && root.position === "top" ? -barWindow.thickness : 0
+      bottom: root.barHidden && root.position === "bottom" ? -barWindow.thickness : 0
+      left: root.barHidden && root.position === "left" ? -barWindow.thickness : 0
+      right: root.barHidden && root.position === "right" ? -barWindow.thickness : 0
     }
 
     anchors {
@@ -1305,15 +1326,22 @@ Item {
       right: root.position === "right" || !root.vertical
     }
 
-    implicitWidth: root.vertical ? root.barSize : 0
-    implicitHeight: root.vertical ? 0 : root.barSize
+    implicitWidth: root.vertical ? barWindow.thickness : 0
+    implicitHeight: root.vertical ? 0 : barWindow.thickness
     color: root.transparent ? "transparent" : root.background
     surfaceFormat.opaque: false
     WlrLayershell.namespace: "omarchy-bar"
     WlrLayershell.layer: WlrLayer.Top
 
     Loader {
-      anchors.fill: parent
+      // Not anchors.fill: with a scale the content gets 1/scaleFactor the room and is
+      // drawn at scaleFactor from the top-left corner. At 1 this is exactly a fill.
+      x: 0
+      y: 0
+      width: parent.width / barWindow.scaleFactor
+      height: parent.height / barWindow.scaleFactor
+      scale: barWindow.scaleFactor
+      transformOrigin: Item.TopLeft
       sourceComponent: root.vertical ? verticalBar : horizontalBar
 
       // A child of the loader, not a sibling of the sections: an ancestor stays
@@ -1350,22 +1378,27 @@ Item {
 
           var popupWidth = tooltipWindow.implicitWidth
           var popupHeight = tooltipWindow.implicitHeight
-          var localX = target.width / 2 - popupWidth / 2
-          var localY = target.height + 6
+          // The target's corners in window space, so the offsets stay real pixels on a
+          // screen whose bar is drawn scaled. At scale 1 this is the old placement.
+          var topLeft = barWindow.contentItem.mapFromItem(target, 0, 0)
+          var bottomRight = barWindow.contentItem.mapFromItem(target, target.width, target.height)
+          var midX = (topLeft.x + bottomRight.x) / 2
+          var midY = (topLeft.y + bottomRight.y) / 2
+          var pointX = midX - popupWidth / 2
+          var pointY = bottomRight.y + 6
 
           if (root.position === "bottom") {
-            localY = -popupHeight - 6
+            pointY = topLeft.y - popupHeight - 6
           } else if (root.position === "left") {
-            localX = target.width + 6
-            localY = target.height / 2 - popupHeight / 2
+            pointX = bottomRight.x + 6
+            pointY = midY - popupHeight / 2
           } else if (root.position === "right") {
-            localX = -popupWidth - 6
-            localY = target.height / 2 - popupHeight / 2
+            pointX = topLeft.x - popupWidth - 6
+            pointY = midY - popupHeight / 2
           }
 
-          var point = barWindow.contentItem.mapFromItem(target, localX, localY)
-          tooltipAnchor.rect.x = Math.round(point.x)
-          tooltipAnchor.rect.y = Math.round(point.y)
+          tooltipAnchor.rect.x = Math.round(pointX)
+          tooltipAnchor.rect.y = Math.round(pointY)
         }
       }
 

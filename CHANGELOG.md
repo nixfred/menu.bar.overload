@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- `bar.screenScale` draws the bar smaller or larger on chosen screens only,
+  matched by connector or model; `menubar-overload screen-scale C49RG9x 0.8`
+  sets it. Screens that are not named are untouched.
+- Tooltips are placed from the target's corners in window space, so they sit
+  right under a widget on a screen whose bar is drawn scaled.
+
 ## 0.9.0 — 2026-09-09
 
 First packaged release.

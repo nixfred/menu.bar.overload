@@ -154,6 +154,26 @@ Settings live in the `bar.carousel` block of `~/.config/omarchy/shell.json`:
               "edgeHints": true }
 ```
 
+### One screen smaller, or larger
+
+`bar.screenScale` draws the bar at its own size on the screens you name, matched
+by connector (`HDMI-A-1`) or by model (`C49RG9x`, which still matches when a
+cable moves to another port). A connector match wins over a model match. On such
+a screen the bar is laid out at the normal size in a canvas `1/factor` bigger and
+drawn at `factor`, so a narrow screen fits more before a strip overflows, icons
+stop colliding, and the bar is `factor` as thick. Other screens are untouched.
+Factors run from 0.4 to 3.
+
+```
+menubar-overload screen-scale                  list the scales that are set
+menubar-overload screen-scale C49RG9x 0.8      that screen's bar 20% smaller
+menubar-overload screen-scale C49RG9x off      back to normal
+```
+
+```json
+"screenScale": { "C49RG9x": 0.8 }
+```
+
 A widget's zone is the `zone` key on its layout entry (`"outer"` or
 `"inner"`), which `omarchy bar set <id> zone inner` also writes. The key
 is deliberately not `pinned`: the tray widget keeps its pinned icon ids
