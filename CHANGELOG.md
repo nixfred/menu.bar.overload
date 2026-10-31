@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Documented the one thing this bar cannot do: widgets that look up another
+  plugin's service with `bar.shell.serviceFor()` get `null` under any
+  third-party replacement bar on Omarchy 4, by design (issue #1). The README
+  now says which widgets are affected and the three ways around it.
 - `bar.screenScale` draws the bar smaller or larger on chosen screens only,
   matched by connector or model; `menubar-overload screen-scale C49RG9x 0.8`
   sets it. Screens that are not named are untouched.

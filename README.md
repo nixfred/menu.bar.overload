@@ -113,6 +113,38 @@ The bar is a clone of Omarchy's `omarchy.bar` engine as it stands in
 no transparency toggle, no drag-to-move gestures, no wheel-to-volume on the
 microphone). Everything else in this repo is the carousel.
 
+## Known limit: widgets that need their own service
+
+Some third-party widgets are two plugins in one: a `service` that runs in the
+shell and a `bar-widget` that finds it with `bar.shell.serviceFor(...)`
+(OmaPop is one). A widget that is dead on this bar while its collector keeps
+running is a suspect. Omarchy 4 hands live service objects only to
+its own built-in bar. A third-party replacement bar, this one included,
+receives a service-less facade, so `serviceFor()` returns `null` for every
+other plugin. The widget draws, but each control gated on the service is
+inert: a panel that opens and does nothing, a strip that stays empty.
+Omarchy's `shell/README.md` says so plainly ("Their live service objects are
+available only when the trusted built-in bar hosts them"), and it is
+deliberate: otherwise a replacement bar could request and keep any widget's
+service. The bar has no way to lift that from the plugin side, because the
+lookup is refused in the shell, before it reaches `Bar.qml`.
+
+Widgets that read no other plugin's service are not affected.
+
+What you can do:
+
+- Use the stock bar while you need such a widget: `omarchy bar use
+  omarchy.bar`. `omarchy bar use nixfred.menubar-overload` brings the
+  carousel back. (Back up `shell.json` first. A reporter's layout survived the switch;
+  that has not been re-tested here.)
+- Or carry a local patch to the shell that trusts this one bar for service
+  lookup (one guarded line in the scoped-shell `_serviceLookup` in
+  `shell.qml`). That is a change to a file Omarchy owns, so it has to be
+  re-applied after every Omarchy update, and it widens what this bar can
+  reach. Only do it if you accept that.
+- Or ask upstream for a user-granted "trusted bar" capability, which is the
+  proper long-term fix.
+
 ## Driving it
 
 `bin/menubar-overload` wraps the bar's IPC target and settings:
