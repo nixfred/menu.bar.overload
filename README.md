@@ -123,13 +123,19 @@ its own built-in bar. A third-party replacement bar, this one included,
 receives a service-less facade, so `serviceFor()` returns `null` for every
 other plugin. The widget draws, but each control gated on the service is
 inert: a panel that opens and does nothing, a strip that stays empty.
-Omarchy's `shell/README.md` says so plainly ("Their live service objects are
-available only when the trusted built-in bar hosts them"), and it is
-deliberate: otherwise a replacement bar could request and keep any widget's
-service. The bar has no way to lift that from the plugin side, because the
-lookup is refused in the shell, before it reaches `Bar.qml`.
+That is deliberate. The stock bar says why in a comment in
+`shell/plugins/bar/Bar.qml`: "Replacement bars receive a service-less entry
+facade. Giving an untrusted bar a generic facade factory would let it retrieve
+another third-party plugin's live service object." The bar has no way to lift
+that from the plugin side, because the lookup is refused in the shell, before
+it reaches `Bar.qml` (read in Omarchy 4.5.0-3).
 
-Widgets that read no other plugin's service are not affected.
+Widgets that read no other plugin's service are not hit by that limit. One
+more thing to know: this bar is a clone from before Omarchy 4's per-plugin bar
+API. The stock bar hands each third-party widget its own `pluginBarApi`
+object as `bar`; this bar hands every widget the whole bar object. A widget
+written against that API may behave differently here. This has been read in
+the code, not tested with a third-party widget.
 
 What you can do:
 
@@ -138,8 +144,8 @@ What you can do:
   carousel back. (Back up `shell.json` first. A reporter's layout survived the switch;
   that has not been re-tested here.)
 - Or carry a local patch to the shell that trusts this one bar for service
-  lookup (one guarded line in the scoped-shell `_serviceLookup` in
-  `shell.qml`). That is a change to a file Omarchy owns, so it has to be
+  lookup (the scoped-shell `_serviceLookup` in `shell.qml` is where the
+  refusal lives; not tried here). That is a change to a file Omarchy owns, so it has to be
   re-applied after every Omarchy update, and it widens what this bar can
   reach. Only do it if you accept that.
 - Or ask upstream for a user-granted "trusted bar" capability, which is the
