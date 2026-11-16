@@ -101,6 +101,11 @@ git clone https://github.com/nixfred/menu.bar.overload ~/Projects/menu.bar.overl
 `~/.config/omarchy/plugins/` and, with `--use`, makes it the active bar. To go
 back: `omarchy bar use pi.bar` (or `omarchy bar reset` for the stock one).
 
+If the checkout is on a network filesystem (NFS, SMB, sshfs), `install.sh`
+copies the plugin instead of linking it, so the bar does not depend on the
+share being reachable at login. Run `install.sh` again to refresh that copy
+after a `git pull`.
+
 There is no daemon to run: the bar lives inside `omarchy-shell`, which
 Hyprland starts at login, and the shell loads whichever bar `shell.json`
 names. `install.sh --boot` adds a login-time safety net anyway, a oneshot

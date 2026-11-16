@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # MenuBar Overload installer.
-#   install.sh           link the plugin into ~/.config/omarchy/plugins
+#   install.sh           link the plugin into ~/.config/omarchy/plugins, or copy
+#                        it when this checkout is on a network filesystem;
+#                        run again to refresh an installed copy
 #   install.sh --use     ...and make it the active bar
 #   install.sh --boot    ...and install a login-time safety net (systemd user
 #                        unit) that re-links it and re-selects it if either
@@ -18,12 +20,38 @@ mode=${1:-}
 quiet=0; [[ $mode == --ensure ]] && quiet=1
 say() { (( quiet )) || echo "$*"; }
 
+# The shell loads every plugin at session start. A link into a network share
+# (NFS, SMB, sshfs) that is slow or down stalls or breaks the bar, so a checkout
+# on one is copied instead of linked. Running install.sh again refreshes the copy.
+on_network_fs() {
+  case $(stat -f -c %T -- "$here" 2>/dev/null) in
+    nfs*|cifs|smb*|fuse*|sshfs|9p|ceph|afs) return 0 ;;
+  esac
+  return 1
+}
+
 mkdir -p "$plugins"
 target="$plugins/$id"
 if [[ -L "$target" ]]; then
   [[ $(readlink -f "$target") == "$(readlink -f "$here/$id")" ]] || { echo "refusing: $target links elsewhere ($(readlink "$target"))" >&2; exit 1; }
+elif [[ -d "$target" && -f "$target/manifest.json" ]]; then
+  # An installed copy. The login-time safety net leaves it alone; any other
+  # run refreshes it from this checkout when the two differ.
+  if [[ $mode != --ensure ]] && ! diff -rq "$here/$id" "$target" >/dev/null 2>&1; then
+    new="$target.new.$$"; old="$target.old.$$"
+    cp -a "$here/$id" "$new"
+    mv "$target" "$old"
+    mv "$new" "$target"
+    rm -rf "$old"
+    say "refreshed the copy at $target"
+  else
+    say "using the installed copy at $target"
+  fi
 elif [[ -e "$target" ]]; then
-  echo "refusing: $target exists and is not a symlink" >&2; exit 1
+  echo "refusing: $target exists and is neither a symlink nor a plugin directory" >&2; exit 1
+elif on_network_fs; then
+  cp -a "$here/$id" "$target"
+  say "copied to $target (this checkout is on a network filesystem)"
 else
   ln -s "$here/$id" "$target"
   say "linked $target"
